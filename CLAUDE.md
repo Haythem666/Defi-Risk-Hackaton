@@ -21,7 +21,8 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 
 ## Structure
 - `src/schemas.py`: shared data contract (Position, Node, Edge, DependencyGraph, Scenario, RiskResult, Verdict). Do not change silently.
-- `src/data/`: fetchers for real data (one file per source): `pendle.py`, `defillama.py`, `morpho.py`.
+- `src/data/`: fetchers for real data (one file per source): `pendle.py`, `defillama.py`, `morpho.py`,
+  `aave.py`, `chain.py` (public RPC reads + Sourcify source verification).
   All HTTP goes through `cache.fetch_json`, which saves every response to `data/cache/` (committed)
   and falls back to it when the API is down. `DEFI_OFFLINE=1` forces cache only.
 - `src/graph/`: builds a DependencyGraph for a position (`pendle_pt.py`: 5 layers from live APIs).
@@ -39,12 +40,16 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - Small commits, push at least once a day, `main` must always run.
 - Plan first for anything non-trivial, then code. Prefer Sonnet; use Opus only for hard problems.
 
-## Current status (Phase 0 done)
-- End-to-end slice works on the live PT-sUSDe 26NOV2026 market (Ethereum, `0x47ad2cd1dd15739a7a035b9d3b7828d916fef77e`).
-- Real: graph discovery (Pendle + DeFiLlama + Morpho), liquidity, exit cost (Pendle router quote).
+## Current status
+- End-to-end slice works on any live Pendle PT on Ethereum (reference: PT-sUSDe 26NOV2026,
+  `0x47ad2cd1dd15739a7a035b9d3b7828d916fef77e`).
+- Real: graph discovery (Pendle + DeFiLlama + Morpho + Aave), issuer found automatically from
+  DeFiLlama yield pools (the project that mints the token), oracle price read on-chain and compared
+  to the PT market price, oracle source verification (Sourcify), exit cost (Pendle router quote).
 - Fake: incident probabilities and severities in `src/risk/assumptions.py`.
-- Known gaps: oracle type is "Unknown" (read on-chain feed), only Morpho lending (add Aave/Euler),
-  exposure of lending edges is crude, exit cost ignores forgone fixed yield, no portfolio view yet.
+- Known gaps: Euler not covered (no keyless API), issuer's own dependencies (e.g. Ethena -> CEXs)
+  not discovered, exposure of lending edges is crude, exit cost ignores forgone yield and crisis
+  liquidity, only PT positions, no portfolio view yet.
 
 ## Commands
 - Install: `pip install -r requirements.txt`

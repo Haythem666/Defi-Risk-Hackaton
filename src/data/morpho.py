@@ -10,8 +10,8 @@ query($assets: [String!], $chains: [Int!]) {
     items {
       marketId
       lltv
-      collateralAsset { symbol address }
-      loanAsset { symbol address }
+      collateralAsset { symbol address decimals price { usd } }
+      loanAsset { symbol address decimals price { usd } }
       oracle { address type }
       state { collateralAssetsUsd borrowAssetsUsd supplyAssetsUsd }
     }

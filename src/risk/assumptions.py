@@ -18,7 +18,7 @@ ASSUMPTIONS: dict[str, list[dict]] = {
     ],
     "asset": [
         {"incident": "depeg", "annual_p": 0.05, "severity": 0.15,
-         "rationale": "PLACEHOLDER: synthetic-dollar depegs (e.g. USDe Oct 2025 on CEX) are short but deep."},
+         "rationale": "PLACEHOLDER: the asset loses value vs its reference (USD for stablecoins, ETH for LSTs)."},
     ],
     "issuer": [
         {"incident": "hack", "annual_p": 0.02, "severity": 0.60,
