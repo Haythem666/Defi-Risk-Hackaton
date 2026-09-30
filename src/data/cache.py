@@ -22,14 +22,18 @@ def _key(method: str, url: str, params: dict | None, body: dict | None) -> str:
 
 
 def fetch_json(url: str, params: dict | None = None, body: dict | None = None,
-               max_age_s: int = 3600):
+               max_age_s: int = 3600, transform=None):
     """GET (or POST if `body` is given) and return parsed JSON.
 
     Uses the cache if it is fresher than `max_age_s`, if DEFI_OFFLINE=1,
-    or if the request fails.
+    or if the request fails. `transform` (optional) slims the response
+    before it is cached, for large payloads.
     """
     method = "POST" if body is not None else "GET"
-    path = CACHE_DIR / f"{_key(method, url, params, body)}.json"
+    key = _key(method, url, params, body)
+    if transform is not None:
+        key += f"-{transform.__name__}"
+    path = CACHE_DIR / f"{key}.json"
     cached = json.loads(path.read_text()) if path.exists() else None
 
     offline = os.environ.get("DEFI_OFFLINE") == "1"
@@ -41,6 +45,8 @@ def fetch_json(url: str, params: dict | None = None, body: dict | None = None,
         resp = requests.request(method, url, params=params, json=body, timeout=TIMEOUT_S)
         resp.raise_for_status()
         data = resp.json()
+        if transform is not None:
+            data = transform(data)
     except (requests.RequestException, ValueError):
         if cached is not None:
             return cached["data"]

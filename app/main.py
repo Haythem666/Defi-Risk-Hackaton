@@ -59,6 +59,17 @@ st.graphviz_chart("\n".join(dot))
 with st.expander("Edges and evidence"):
     st.dataframe(pd.DataFrame([vars(e) for e in graph.edges]), width="stretch")
 
+oracles = [n for n in graph.nodes if n.type == "oracle"]
+if oracles:
+    st.markdown("**Oracle checks** (price vs PT market price, public source code)")
+    st.dataframe(pd.DataFrame([{
+        "oracle": n.meta["address"],
+        "price (USD)": f"{n.meta['price_usd']:.4f}" if n.meta.get("price_usd") else "-",
+        "gap to market": f"{n.meta['gap_to_market']:+.2%}" if n.meta.get("gap_to_market") is not None else "-",
+        "source verified": "yes" if n.meta.get("source_verified") else "NO",
+        "proxy of": n.meta.get("proxy_of") or "-",
+        "read from": n.meta.get("source")} for n in oracles]), width="stretch")
+
 # --- 2. Risk --------------------------------------------------------------
 st.subheader("2. Incident scenarios over the horizon")
 scenarios = build_scenarios(graph, horizon)
