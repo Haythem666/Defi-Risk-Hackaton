@@ -1,0 +1,1 @@
+{"fetched_at": 1790869506.3603985, "url": "https://api.llama.fi/protocol/midas-rwa", "params": null, "body": null, "data": {"name": "Midas RWA", "category": "RWA", "audits": "2", "audit_links": ["https://docs.midas.app/resources/audits"], "parentProtocol": null, "hacks": [], "chains": ["Ethereum"]}}

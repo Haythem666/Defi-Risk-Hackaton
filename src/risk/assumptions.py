@@ -32,6 +32,10 @@ ASSUMPTIONS: dict[str, list[dict]] = {
         {"incident": "liquidity_crunch", "annual_p": 0.05, "severity": 0.10,
          "rationale": "PLACEHOLDER: liquidation cascade dumps PT into the AMM."},
     ],
+    "vault": [
+        {"incident": "hack", "annual_p": 0.01, "severity": 0.20,
+         "rationale": "PLACEHOLDER: curator allocates to a bad market or vault contract exploit."},
+    ],
     "venue": [
         {"incident": "hack", "annual_p": 0.02, "severity": 1.0,
          "rationale": "PLACEHOLDER: exchange insolvency or freeze (FTX 2022); assets held there are lost."},

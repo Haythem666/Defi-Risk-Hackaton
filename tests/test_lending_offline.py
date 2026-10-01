@@ -39,3 +39,16 @@ def test_aave_supply_lists_pool_collaterals():
     # no claimed issuer for plain USDC / WBTC (largest holders are lenders)
     issuers = {e.source for e in g.edges if e.kind == "issued_by"}
     assert "asset:USDC" not in issuers and "asset:WBTC" not in issuers
+
+
+STEAKHOUSE_USDT = "0xbEef047a543E45807105E51A8BBEFCc5950fcfBa"
+
+
+def test_morpho_vault_spreads_exposure_over_its_markets():
+    g = build_graph(Position(1, STEAKHOUSE_USDT, 1e6, kind="morpho_vault"))
+    _check(g)
+    vault = next(n for n in g.nodes if n.type == "vault")
+    assert vault.meta["curators"]
+    allocs = [e for e in g.edges if e.kind == "allocates_to"]
+    assert len(allocs) >= 2
+    assert sum(e.exposure for e in allocs) <= 1.0 + 0.0005 * len(allocs)  # 3-decimal rounding

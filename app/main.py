@@ -19,7 +19,7 @@ from src.schemas import Position
 
 COLORS = {"position": "#f4a261", "chain": "#8ecae6", "protocol": "#90be6d",
           "asset": "#ffd166", "issuer": "#f28482", "oracle": "#cdb4db",
-          "market": "#a8dadc", "lending": "#b5838d", "venue": "#adb5bd"}
+          "market": "#a8dadc", "lending": "#b5838d", "venue": "#adb5bd", "vault": "#e9c46a"}
 
 st.set_page_config(page_title="DeFi Risk Dependency", layout="wide")
 st.title("DeFi Risk Dependency: stay or exit?")
@@ -28,11 +28,11 @@ st.title("DeFi Risk Dependency: stay or exit?")
 with st.sidebar:
     st.header("Position")
     kinds = {"Pendle PT": "pendle_pt", "Lend on Morpho": "morpho_supply",
-             "Supply to Aave": "aave_supply"}
+             "Supply to Aave": "aave_supply", "Morpho vault": "morpho_vault"}
     kind = kinds[st.radio("Pocket type", list(kinds))]
     # Only offer chains where this pocket type exists.
     supported = {"pendle_pt": list(CHAINS), "morpho_supply": list(morpho.NETWORKS),
-                 "aave_supply": list(aave.CHAIN_IDS)}[kind]
+                 "aave_supply": list(aave.CHAIN_IDS), "morpho_vault": list(morpho.NETWORKS)}[kind]
     chain_id = st.selectbox("Chain", supported, format_func=lambda c: CHAINS[c])
     asset_address = None
     if kind == "pendle_pt":
@@ -45,6 +45,10 @@ with st.sidebar:
                   f"({m['state']['supplyAssetsUsd'] / 1e6:,.0f}M)": m["marketId"]
                   for m in morpho.listed_markets(chain_id)}
         address = labels[st.selectbox("Morpho market (collateral / lent asset)", list(labels))]
+    elif kind == "morpho_vault":
+        labels = {f"{v['name']} · {v['asset']['symbol']} ({v['state']['totalAssetsUsd'] / 1e6:,.0f}M)":
+                  v["address"] for v in morpho.listed_vaults(chain_id)}
+        address = labels[st.selectbox("Morpho vault", list(labels))]
     else:
         pools = {m["name"]: m for m in aave.markets(chain_id)}
         pool = pools[st.selectbox("Aave pool", list(pools))]

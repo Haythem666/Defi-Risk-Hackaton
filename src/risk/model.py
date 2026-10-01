@@ -17,17 +17,22 @@ def to_networkx(g: DependencyGraph) -> nx.DiGraph:
 
 
 def path_exposure(G: nx.DiGraph, source: str, target: str) -> float:
-    """Share of `source` that depends on `target`: product of edge exposures
-    along a path, keeping the most exposed path."""
+    """Share of `source` that depends on `target`.
+
+    Each path contributes the product of its edge exposures. Paths are added
+    up, because distinct paths usually carry distinct parts of the value (a
+    vault lending to two markets backed by the same collateral), and the sum
+    is capped at 1 for paths that overlap (everything settles on one chain).
+    """
     if source == target:
         return 1.0
-    best = 0.0
+    total = 0.0
     for path in nx.all_simple_paths(G, source, target):
         e = 1.0
         for a, b in zip(path, path[1:]):
             e *= G.edges[a, b]["exposure"]
-        best = max(best, e)
-    return best
+        total += e
+    return min(1.0, total)
 
 
 def horizon_probability(annual_p: float, horizon_days: int) -> float:

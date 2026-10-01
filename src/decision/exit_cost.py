@@ -33,7 +33,9 @@ def lending_exit_cost(pos: Position, graph: DependencyGraph) -> tuple[float, str
     """Withdrawing a loan costs nothing (gas aside) while the pool has idle
     liquidity. Above it, the rest is stuck until borrowers repay: not a
     price loss, but the position cannot be exited, which the source says."""
-    pool = next(n for n in graph.nodes if n.type == "lending")
+    # A vault's own liquidity (what it can pull back from its markets), else the pool's.
+    pool = next((n for n in graph.nodes if n.type == "vault"), None) or \
+        next(n for n in graph.nodes if n.type == "lending")
     liquidity = pool.meta.get("liquidity_usd") or 0.0
     if liquidity >= pos.size_usd:
         return 0.0, f"Withdraw from the pool: {liquidity:,.0f} USD idle liquidity covers it"

@@ -70,3 +70,38 @@ def listed_markets(chain_id: int, first: int = 30) -> list[dict]:
     items = fetch_json(URL, body={"query": q, "variables": {"chains": [chain_id], "first": first}}
                        )["data"]["markets"]["items"]
     return [m for m in items if m.get("collateralAsset")]
+
+
+_VAULT_FIELDS = """
+  address
+  name
+  listed
+  asset { symbol address price { usd } }
+  liquidity { usd }
+  warnings { type level }
+  state { totalAssetsUsd netApy fee timelock guardian curators { name }
+          allocation { supplyAssetsUsd market { marketId } } }
+"""
+
+
+def vault(chain_id: int, address: str) -> dict:
+    """One Morpho vault: curator, fee, timelock, liquidity and allocation."""
+    q = f"query($a: String!, $chain: Int!) {{ vaultByAddress(address: $a, chainId: $chain) {{ {_VAULT_FIELDS} }} }}"
+    return fetch_json(URL, body={"query": q, "variables": {"a": address, "chain": chain_id}}
+                      )["data"]["vaultByAddress"]
+
+
+def listed_vaults(chain_id: int, first: int = 30) -> list[dict]:
+    """Largest vaults listed in the Morpho app, by deposits."""
+    if chain_id not in NETWORKS:
+        return []
+    q = """query($chains: [Int!], $first: Int) {
+      vaults(first: $first, orderBy: TotalAssetsUsd, orderDirection: Desc,
+             where: {chainId_in: $chains, listed: true}) {
+        items { address name asset { symbol } state { totalAssetsUsd } } } }"""
+    return fetch_json(URL, body={"query": q, "variables": {"chains": [chain_id], "first": first}}
+                      )["data"]["vaults"]["items"]
+
+
+def vault_url(chain_id: int, address: str) -> str:
+    return f"https://app.morpho.org/{NETWORKS.get(chain_id, chain_id)}/vault/{address}"

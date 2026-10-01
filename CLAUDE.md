@@ -26,7 +26,8 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
   All HTTP goes through `cache.fetch_json`, which saves every response to `data/cache/` (committed)
   and falls back to it when the API is down. `DEFI_OFFLINE=1` forces cache only.
 - `src/graph/`: builds a DependencyGraph for a position. `build.py` dispatches on `Position.kind`:
-  `pendle_pt.py` (5 layers from live APIs), `lending.py` (Morpho market / Aave pool supply).
+  `pendle_pt.py` (5 layers from live APIs), `lending.py` (Morpho market / Aave pool supply /
+  Morpho vault).
   `common.py` holds shared helpers (chains, explorer links, issuer discovery, oracle checks).
 - `src/risk/`: `assumptions.py` (incident rates, PLACEHOLDERS to calibrate), `model.py` (scenarios, propagation, Monte Carlo -> RiskResult).
 - `src/decision/`: `exit_cost.py` (live Pendle router quote; pool liquidity for loans) + `rule.py` (STAY/EXIT -> Verdict).
@@ -44,9 +45,11 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 
 ## Current status
 - End-to-end slice works on six chains (Ethereum, Arbitrum, Base, BSC, HyperEVM, Plasma; each
-  protocol only where its API covers the chain) for three pocket types: any live Pendle PT (reference:
+  protocol only where its API covers the chain) for four pocket types: any live Pendle PT (reference:
   PT-sUSDe 26NOV2026, `0x47ad2cd1dd15739a7a035b9d3b7828d916fef77e`), lending in a listed Morpho
-  market, and supplying to an Aave v3 pool. A lender's exposure to collateral = pool utilization.
+  market, supplying to an Aave v3 pool, and depositing in a Morpho vault. A lender's exposure
+  to collateral = pool utilization; a vault's exposure to a market = its share of the vault.
+  Exposure along the graph = sum over paths of the product of edge exposures, capped at 1.
 - Real: graph discovery (Pendle + DeFiLlama + Morpho + Aave), issuer found automatically from
   DeFiLlama yield pools (the largest pool of the token, if it mints it rather than lends it), oracle price read on-chain and compared
   to the PT market price, oracle source verification (Sourcify), exit cost (Pendle router quote).
@@ -55,7 +58,7 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
   exposure = venue share of backing. Protocol/issuer nodes carry DeFiLlama category, audits and
   past hacks (input for calibrating the risk model).
 - Known gaps: Euler not covered (no keyless API), venues only for Ethena, exposure of lending edges is crude, exit cost ignores forgone yield and crisis
-  liquidity, no vaults, no portfolio view yet.
+  liquidity, vaults routing to off-chain venues (perps) not covered, no portfolio view yet.
 
 ## Commands
 - Install: `pip install -r requirements.txt`
