@@ -1,4 +1,4 @@
-"""Exit cost of a Pendle PT position from a live router quote."""
+"""Exit cost of a position: live Pendle quote for PTs, pool liquidity for loans."""
 
 from src.data import pendle
 from src.decision.rule import amm_exit_cost
@@ -25,3 +25,22 @@ def pendle_exit_cost(pos: Position, graph: DependencyGraph) -> tuple[float, str]
         cost = amm_exit_cost(pos.size_usd, market.meta["liquidity_usd"],
                              market.meta.get("fee_rate") or 0.0)
         return cost, "Constant-product approximation (Pendle quote unavailable)"
+
+
+def lending_exit_cost(pos: Position, graph: DependencyGraph) -> tuple[float, str]:
+    """Withdrawing a loan costs nothing (gas aside) while the pool has idle
+    liquidity. Above it, the rest is stuck until borrowers repay: not a
+    price loss, but the position cannot be exited, which the source says."""
+    pool = next(n for n in graph.nodes if n.type == "lending")
+    liquidity = pool.meta.get("liquidity_usd") or 0.0
+    if liquidity >= pos.size_usd:
+        return 0.0, f"Withdraw from the pool: {liquidity:,.0f} USD idle liquidity covers it"
+    share = liquidity / pos.size_usd if pos.size_usd else 0.0
+    return 0.0, (f"Only {share:.0%} withdrawable now ({liquidity:,.0f} USD idle liquidity); "
+                 f"the rest is stuck until borrowers repay")
+
+
+def exit_cost(pos: Position, graph: DependencyGraph) -> tuple[float, str]:
+    if pos.kind == "pendle_pt":
+        return pendle_exit_cost(pos, graph)
+    return lending_exit_cost(pos, graph)

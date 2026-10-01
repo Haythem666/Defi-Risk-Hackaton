@@ -30,3 +30,37 @@ def markets_with_collateral(chain_id: int, asset_address: str) -> list[dict]:
 def market_url(chain_id: int, market_id: str) -> str:
     network = {1: "ethereum", 8453: "base"}.get(chain_id, str(chain_id))
     return f"https://app.morpho.org/{network}/market/{market_id}"
+
+
+_MARKET_FIELDS = """
+  marketId
+  lltv
+  listed
+  collateralAsset { symbol address decimals price { usd } }
+  loanAsset { symbol address decimals price { usd } }
+  oracle { address type }
+  state { supplyAssetsUsd borrowAssetsUsd collateralAssetsUsd liquidityAssetsUsd
+          utilization supplyApy }
+"""
+
+
+def market(chain_id: int, market_id: str) -> dict:
+    """One Morpho market by its id."""
+    q = f"query($id: String!, $chain: Int!) {{ marketById(marketId: $id, chainId: $chain) {{ {_MARKET_FIELDS} }} }}"
+    return fetch_json(URL, body={"query": q, "variables": {"id": market_id, "chain": chain_id}}
+                      )["data"]["marketById"]
+
+
+def listed_markets(chain_id: int, first: int = 30) -> list[dict]:
+    """Largest Morpho markets listed in the Morpho app, by supply.
+
+    Unlisted markets include broken ones (billions supplied against a few
+    dollars of collateral), so we only offer listed ones. Idle markets (no
+    collateral asset, nothing can be borrowed) are skipped too.
+    """
+    q = f"""query($chains: [Int!], $first: Int) {{
+      markets(first: $first, orderBy: SupplyAssetsUsd, orderDirection: Desc,
+              where: {{chainId_in: $chains, listed: true}}) {{ items {{ {_MARKET_FIELDS} }} }} }}"""
+    items = fetch_json(URL, body={"query": q, "variables": {"chains": [chain_id], "first": first}}
+                       )["data"]["markets"]["items"]
+    return [m for m in items if m.get("collateralAsset")]

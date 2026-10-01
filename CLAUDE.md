@@ -25,9 +25,11 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
   `aave.py`, `chain.py` (public RPC reads + Sourcify source verification).
   All HTTP goes through `cache.fetch_json`, which saves every response to `data/cache/` (committed)
   and falls back to it when the API is down. `DEFI_OFFLINE=1` forces cache only.
-- `src/graph/`: builds a DependencyGraph for a position (`pendle_pt.py`: 5 layers from live APIs).
+- `src/graph/`: builds a DependencyGraph for a position. `build.py` dispatches on `Position.kind`:
+  `pendle_pt.py` (5 layers from live APIs), `lending.py` (Morpho market / Aave pool supply).
+  `common.py` holds shared helpers (chains, explorer links, issuer discovery, oracle checks).
 - `src/risk/`: `assumptions.py` (incident rates, PLACEHOLDERS to calibrate), `model.py` (scenarios, propagation, Monte Carlo -> RiskResult).
-- `src/decision/`: `exit_cost.py` (live Pendle router quote) + `rule.py` (STAY/EXIT -> Verdict).
+- `src/decision/`: `exit_cost.py` (live Pendle router quote; pool liquidity for loans) + `rule.py` (STAY/EXIT -> Verdict).
 - `app/`: Streamlit app (`streamlit run app/main.py`).
 - `data/examples/`: hand-made example graphs and past incidents.
 - `tests/`: pytest.
@@ -41,15 +43,16 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - Plan first for anything non-trivial, then code. Prefer Sonnet; use Opus only for hard problems.
 
 ## Current status
-- End-to-end slice works on any live Pendle PT on Ethereum (reference: PT-sUSDe 26NOV2026,
-  `0x47ad2cd1dd15739a7a035b9d3b7828d916fef77e`).
+- End-to-end slice works on Ethereum for three pocket types: any live Pendle PT (reference:
+  PT-sUSDe 26NOV2026, `0x47ad2cd1dd15739a7a035b9d3b7828d916fef77e`), lending in a listed Morpho
+  market, and supplying to an Aave v3 pool. A lender's exposure to collateral = pool utilization.
 - Real: graph discovery (Pendle + DeFiLlama + Morpho + Aave), issuer found automatically from
-  DeFiLlama yield pools (the project that mints the token), oracle price read on-chain and compared
+  DeFiLlama yield pools (the largest pool of the token, if it mints it rather than lends it), oracle price read on-chain and compared
   to the PT market price, oracle source verification (Sourcify), exit cost (Pendle router quote).
 - Fake: incident probabilities and severities in `src/risk/assumptions.py`.
 - Known gaps: Euler not covered (no keyless API), issuer's own dependencies (e.g. Ethena -> CEXs)
   not discovered, exposure of lending edges is crude, exit cost ignores forgone yield and crisis
-  liquidity, only PT positions, no portfolio view yet.
+  liquidity, no vaults, Ethereum only, no portfolio view yet.
 
 ## Commands
 - Install: `pip install -r requirements.txt`
