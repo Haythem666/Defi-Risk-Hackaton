@@ -1,0 +1,1 @@
+{"fetched_at": 1790869748.8144002, "url": "https://api.llama.fi/protocol/hyperliquid-bridge", "params": null, "body": null, "data": {"name": "Hyperliquid Bridge", "category": "Bridge", "audits": "2", "audit_links": ["https://hyperliquid.gitbook.io/hyperliquid-docs/audits"], "parentProtocol": "parent#hyperliquid", "hacks": [], "chains": ["Hyperliquid L1", "Arbitrum"]}}

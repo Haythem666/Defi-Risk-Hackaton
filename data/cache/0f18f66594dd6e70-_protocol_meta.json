@@ -1,0 +1,1 @@
+{"fetched_at": 1790869493.7962856, "url": "https://api.llama.fi/protocol/sky-lending", "params": null, "body": null, "data": {"name": "Sky Lending", "category": "CDP", "audits": "2", "audit_links": ["https://security.makerdao.com/"], "parentProtocol": "parent#maker", "hacks": [], "chains": ["Ethereum"]}}

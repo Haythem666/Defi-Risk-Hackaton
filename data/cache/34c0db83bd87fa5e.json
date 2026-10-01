@@ -1,0 +1,1 @@
+{"fetched_at": 1790869117.2715156, "url": "https://arbitrum-one-rpc.publicnode.com", "params": null, "body": {"jsonrpc": "2.0", "id": 1, "method": "eth_call", "params": [{"to": "0xaAe5194036306A14B6bFE51A255001bd75F315b1", "data": "0xa035b1fe"}, "latest"]}, "data": {"jsonrpc": "2.0", "id": 1, "result": "0x00000000000000000000000000000000000000000000d305135a3178903a1580"}}
