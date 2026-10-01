@@ -37,8 +37,10 @@ def lending_exit_cost(pos: Position, graph: DependencyGraph) -> tuple[float, str
     pool = next((n for n in graph.nodes if n.type == "vault"), None) or \
         next(n for n in graph.nodes if n.type == "lending")
     liquidity = pool.meta.get("liquidity_usd") or 0.0
+    lockup = pool.meta.get("lockup_days")
+    wait = f"; {lockup}-day lock-up after deposit" if lockup else ""
     if liquidity >= pos.size_usd:
-        return 0.0, f"Withdraw from the pool: {liquidity:,.0f} USD idle liquidity covers it"
+        return 0.0, f"Withdraw from the pool: {liquidity:,.0f} USD idle liquidity covers it{wait}"
     share = liquidity / pos.size_usd if pos.size_usd else 0.0
     return 0.0, (f"Only {share:.0%} withdrawable now ({liquidity:,.0f} USD idle liquidity); "
                  f"the rest is stuck until borrowers repay")

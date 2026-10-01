@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 import streamlit as st
 
-from src.data import aave, morpho, pendle
+from src.data import aave, hyperliquid, morpho, pendle
 from src.decision.exit_cost import exit_cost as position_exit_cost
 from src.decision.rule import decide
 from src.graph.build import build_graph
@@ -28,11 +28,13 @@ st.title("DeFi Risk Dependency: stay or exit?")
 with st.sidebar:
     st.header("Position")
     kinds = {"Pendle PT": "pendle_pt", "Lend on Morpho": "morpho_supply",
-             "Supply to Aave": "aave_supply", "Morpho vault": "morpho_vault"}
+             "Supply to Aave": "aave_supply", "Morpho vault": "morpho_vault",
+             "Hyperliquid vault (perps)": "hyperliquid_vault"}
     kind = kinds[st.radio("Pocket type", list(kinds))]
     # Only offer chains where this pocket type exists.
     supported = {"pendle_pt": list(CHAINS), "morpho_supply": list(morpho.NETWORKS),
-                 "aave_supply": list(aave.CHAIN_IDS), "morpho_vault": list(morpho.NETWORKS)}[kind]
+                 "aave_supply": list(aave.CHAIN_IDS), "morpho_vault": list(morpho.NETWORKS),
+                 "hyperliquid_vault": [999]}[kind]
     chain_id = st.selectbox("Chain", supported, format_func=lambda c: CHAINS[c])
     asset_address = None
     if kind == "pendle_pt":
@@ -49,6 +51,9 @@ with st.sidebar:
         labels = {f"{v['name']} · {v['asset']['symbol']} ({v['state']['totalAssetsUsd'] / 1e6:,.0f}M)":
                   v["address"] for v in morpho.listed_vaults(chain_id)}
         address = labels[st.selectbox("Morpho vault", list(labels))]
+    elif kind == "hyperliquid_vault":
+        address = st.text_input("Hyperliquid vault address", hyperliquid.HLP,
+                                help="Default: HLP, the exchange's market-making vault").strip()
     else:
         pools = {m["name"]: m for m in aave.markets(chain_id)}
         pool = pools[st.selectbox("Aave pool", list(pools))]
@@ -89,10 +94,10 @@ oracles = [n for n in graph.nodes if n.type == "oracle"]
 if oracles:
     st.markdown("**Oracle checks** (price vs PT market price, public source code)")
     st.dataframe(pd.DataFrame([{
-        "oracle": n.meta["address"],
+        "oracle": n.meta.get("address") or n.name,
         "price (USD)": f"{n.meta['price_usd']:.4f}" if n.meta.get("price_usd") else "-",
         "gap to market": f"{n.meta['gap_to_market']:+.2%}" if n.meta.get("gap_to_market") is not None else "-",
-        "source verified": "yes" if n.meta.get("source_verified") else "NO",
+        "source verified": {True: "yes", False: "NO"}.get(n.meta.get("source_verified"), "n/a"),
         "proxy of": n.meta.get("proxy_of") or "-",
         "read from": n.meta.get("source")} for n in oracles]), width="stretch")
 

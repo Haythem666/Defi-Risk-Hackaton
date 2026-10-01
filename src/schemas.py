@@ -22,6 +22,7 @@ PositionKind = Literal[
     "morpho_supply",  # lending the loan asset in one Morpho market
     "aave_supply",    # supplying an asset to an Aave pool
     "morpho_vault",   # depositing in a Morpho vault (curated allocation to markets)
+    "hyperliquid_vault",  # depositing in a vault trading on the Hyperliquid perp exchange
 ]
 
 IncidentType = Literal[
