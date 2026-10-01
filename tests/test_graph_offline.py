@@ -30,3 +30,12 @@ def test_pt_susde_reaches_ethena_hedging_venues():
     assert venues, "Ethena's exchange venues should be discovered"
     assert all(e.source == "issuer:ethena-usde" and 0 < e.exposure < 1 for e in venues)
     assert sum(e.exposure for e in venues) < 1  # the rest is unallocated cash
+
+
+def test_pt_exposure_to_morpho_is_liquidation_pressure():
+    g = build_graph(Position(1, PT_SUSDE_NOV26, 1_000_000))
+    edge = next(e for e in g.edges if e.kind == "collateral_in")
+    lend = g.node(edge.target)
+    assert "liquidated_at_-5pct_usd" in lend.meta
+    assert 0 <= edge.exposure <= 1
+    assert "liquidates" in edge.evidence

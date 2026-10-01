@@ -105,3 +105,24 @@ def listed_vaults(chain_id: int, first: int = 30) -> list[dict]:
 
 def vault_url(chain_id: int, address: str) -> str:
     return f"https://app.morpho.org/{NETWORKS.get(chain_id, chain_id)}/vault/{address}"
+
+
+def collateral_at_risk(chain_id: int, market_id: str, points: int = 20) -> list[tuple[float, float]]:
+    """[(price ratio, USD of collateral liquidatable at that price), ...].
+    A ratio of 0.95 means the collateral price falls 5% from now."""
+    if chain_id not in NETWORKS:
+        return []
+    q = """query($id: String!, $chain: Int!, $n: Int) {
+      marketCollateralAtRisk(uniqueKey: $id, chainId: $chain, numberOfPoints: $n) {
+        collateralAtRisk { collateralPriceRatio collateralUsd } } }"""
+    data = fetch_json(URL, body={"query": q, "variables": {"id": market_id, "chain": chain_id,
+                                                           "n": points}})
+    rows = (((data.get("data") or {}).get("marketCollateralAtRisk") or {})
+            .get("collateralAtRisk") or [])
+    return [(r["collateralPriceRatio"], r["collateralUsd"] or 0.0) for r in rows]
+
+
+def liquidated_at(curve: list[tuple[float, float]], price_ratio: float) -> float:
+    """USD liquidated if the collateral price falls to `price_ratio` (0..1)."""
+    eligible = [usd for ratio, usd in curve if ratio >= price_ratio - 1e-9]
+    return max(eligible, default=0.0)

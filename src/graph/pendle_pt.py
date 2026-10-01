@@ -15,6 +15,9 @@ from src.graph.common import (MIN_COLLATERAL_USD, add_chain, add_issuer, add_ora
                               add_protocol, chain_name, explorer, morpho_oracle_usd)
 from src.schemas import DependencyGraph, Edge, Node, Position
 
+# Price drop used to measure liquidation pressure on the PT's exit pool.
+SHOCK = 0.05
+
 
 def build_graph(pos: Position) -> DependencyGraph:
     cid = pos.chain_id
@@ -71,9 +74,11 @@ def build_graph(pos: Position) -> DependencyGraph:
     edges.append(Edge(market_id, proto_id, "runs_on", 1.0, pendle_app))
 
     # Layers 3 + 5: lending markets using the PT as collateral, and their oracles.
-    # Liquidations there sell PT into our exit market. Exposure ~ share of the
-    # PT market's TVL parked as collateral (crude, to refine).
+    # Liquidations there sell PT into our exit market. Morpho: exposure = PT
+    # liquidated if its price falls SHOCK, over the pool's liquidity (forced
+    # selling vs what the pool can absorb). Aave: share of PT TVL posted there.
     pt_supply_usd = live.get("totalTvl", {}).get("usd") or 0
+    pool_liquidity = live["liquidity"]["usd"] or 0
     pt_price_usd = (live.get("assetPriceUsd") or 1.0) * (1 - (live.get("ptDiscount") or 0.0))
     for lm in morpho.markets_with_collateral(cid, m["pt"]):
         coll_usd = lm["state"]["collateralAssetsUsd"] or 0
@@ -86,9 +91,24 @@ def build_graph(pos: Position) -> DependencyGraph:
                               "market_id": lm["marketId"], "lltv": int(lm["lltv"]) / 1e18,
                               "collateral_usd": coll_usd,
                               "borrow_usd": lm["state"]["borrowAssetsUsd"]}))
-        share = min(1.0, coll_usd / pt_supply_usd) if pt_supply_usd else 0.0
-        edges.append(Edge(pos_id, lend_id, "collateral_in", round(share, 3),
-                          morpho.market_url(cid, lm["marketId"])))
+        curve = []
+        try:
+            curve = morpho.collateral_at_risk(cid, lm["marketId"])
+        except Exception:
+            pass
+        url = morpho.market_url(cid, lm["marketId"])
+        if curve and pool_liquidity:
+            liq = morpho.liquidated_at(curve, 1 - SHOCK)
+            nodes[-1].meta.update({f"liquidated_at_-{int(s * 100)}pct_usd": morpho.liquidated_at(curve, 1 - s)
+                                   for s in (0.02, 0.05, 0.10, 0.20)})
+            exposure = min(1.0, liq / pool_liquidity)
+            evidence = (f"A {SHOCK:.0%} PT price drop liquidates {liq:,.0f} USD of PT, "
+                        f"{liq / pool_liquidity:.0%} of the pool's {pool_liquidity:,.0f} USD liquidity "
+                        f"(Morpho marketCollateralAtRisk): {url}")
+        else:
+            exposure = min(1.0, coll_usd / pt_supply_usd) if pt_supply_usd else 0.0
+            evidence = url
+        edges.append(Edge(pos_id, lend_id, "collateral_in", round(exposure, 3), evidence))
         oracle = (lm.get("oracle") or {}).get("address")
         if oracle:
             add_oracle(nodes, edges, cid, lend_id, oracle, morpho_oracle_usd(cid, lm),

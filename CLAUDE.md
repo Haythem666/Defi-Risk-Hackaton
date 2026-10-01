@@ -49,6 +49,8 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
   PT-sUSDe 26NOV2026, `0x47ad2cd1dd15739a7a035b9d3b7828d916fef77e`), lending in a listed Morpho
   market, supplying to an Aave v3 pool, and depositing in a Morpho vault. A lender's exposure
   to collateral = pool utilization; a vault's exposure to a market = its share of the vault.
+  A PT's exposure to a Morpho market = PT liquidated if its price drops 5% (Morpho
+  marketCollateralAtRisk) / Pendle pool liquidity, capped at 1 (forced-selling pressure).
   Exposure along the graph = sum over paths of the product of edge exposures, capped at 1.
 - Real: graph discovery (Pendle + DeFiLlama + Morpho + Aave), issuer found automatically from
   DeFiLlama yield pools (the largest pool of the token, if it mints it rather than lends it), oracle price read on-chain and compared
@@ -57,7 +59,7 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - Issuer depth: Ethena -> exchange venues (Binance, OKX, ...) from Ethena's transparency API,
   exposure = venue share of backing. Protocol/issuer nodes carry DeFiLlama category, audits and
   past hacks (input for calibrating the risk model).
-- Known gaps: Euler not covered (no keyless API), venues only for Ethena, exposure of lending edges is crude, exit cost ignores forgone yield and crisis
+- Known gaps: Euler not covered (no keyless API), venues only for Ethena, Aave PT exposure still crude (share of PT TVL), exit cost ignores forgone yield and crisis
   liquidity, vaults routing to off-chain venues (perps) not covered, no portfolio view yet.
 
 ## Commands
