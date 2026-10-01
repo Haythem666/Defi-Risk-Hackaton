@@ -1,7 +1,7 @@
 """Helpers shared by every graph builder: chain names, explorer links,
 issuer discovery and oracle checks."""
 
-from src.data import chain, defillama
+from src.data import chain, defillama, ethena
 from src.schemas import Edge, Node
 
 # Chain id -> chain name as DeFiLlama spells it (used to match yield pools).
@@ -14,6 +14,9 @@ EXPLORERS = {1: "https://etherscan.io/address/", 42161: "https://arbiscan.io/add
 
 # Lending markets / collaterals smaller than this cannot move a position.
 MIN_COLLATERAL_USD = 10_000
+
+# Venues holding less than this share of an issuer's backing are left out.
+MIN_VENUE_SHARE = 0.001
 
 
 def chain_name(chain_id: int) -> str:
@@ -36,13 +39,20 @@ def add_chain(nodes: list[Node], cid: int) -> str:
     return add_node(nodes, Node(f"chain:{name.lower()}", "chain", name, name, {"chain_id": cid}))
 
 
+def _risk_meta(slug: str) -> dict:
+    """TVL, category, audits and past hacks from DeFiLlama, for the risk model."""
+    info = defillama.protocol_info(slug)
+    return {"tvl_usd": defillama.protocol_tvl(slug), "defillama": slug,
+            "category": info.get("category"), "audits": info.get("audits"),
+            "audit_links": info.get("audit_links"), "past_hacks": info.get("hacks") or []}
+
+
 def add_protocol(nodes: list[Node], edges: list[Edge], cid: int, slug: str, name: str,
                  evidence: str) -> str:
-    """Protocol node (TVL from DeFiLlama) deployed on the chain."""
+    """Protocol node (TVL, audits, past hacks from DeFiLlama) deployed on the chain."""
     proto_id = f"protocol:{slug}"
     if all(n.id != proto_id for n in nodes):
-        nodes.append(Node(proto_id, "protocol", name, chain_name(cid),
-                          {"tvl_usd": defillama.protocol_tvl(slug), "defillama": slug}))
+        nodes.append(Node(proto_id, "protocol", name, chain_name(cid), _risk_meta(slug)))
         edges.append(Edge(proto_id, add_chain(nodes, cid), "deployed_on", 1.0, evidence))
     return proto_id
 
@@ -55,12 +65,41 @@ def add_issuer(nodes: list[Node], edges: list[Edge], cid: int, asset_id: str,
     if not issuer:
         return None
     slug = issuer["project"]
-    issuer_id = add_node(nodes, Node(f"issuer:{slug}", "issuer", slug, chain_name(cid),
-                                     {"tvl_usd": defillama.protocol_tvl(slug), "defillama": slug}))
+    issuer_id = f"issuer:{slug}"
+    new = all(n.id != issuer_id for n in nodes)
+    add_node(nodes, Node(issuer_id, "issuer", slug, chain_name(cid), _risk_meta(slug)))
     edges.append(Edge(asset_id, issuer_id, "issued_by", 1.0,
                       f"DeFiLlama pool issuing {issuer['symbol']}: "
                       f"{defillama.pool_url(issuer['pool'])}"))
+    if new:
+        add_issuer_venues(nodes, edges, cid, issuer_id, slug)
     return issuer_id
+
+
+def add_issuer_venues(nodes: list[Node], edges: list[Edge], cid: int, issuer_id: str,
+                      slug: str) -> None:
+    """Off-chain venues an issuer depends on, where a public source lists them.
+
+    Ethena: USDe backing is partly held as margin on exchanges to hedge
+    (Binance, OKX, Bybit, ...). If a venue fails, that share of the backing is
+    at risk. Exposure = the venue's share of total backing.
+    """
+    if not slug.startswith("ethena"):
+        return
+    try:
+        venues = ethena.backing_by_venue()
+    except Exception:
+        return
+    total = sum(venues.values()) or 1.0
+    for venue, usd in sorted(venues.items(), key=lambda kv: -kv[1]):
+        share = usd / total
+        if venue == "Unallocated" or share < MIN_VENUE_SHARE:
+            continue
+        venue_id = add_node(nodes, Node(f"venue:{venue.lower()}", "venue", venue, None,
+                                        {"backing_usd": usd, "share_of_backing": share}))
+        edges.append(Edge(issuer_id, venue_id, "hedges_on", round(share, 3),
+                          f"{share:.1%} of USDe backing on {venue}: {ethena.COLLATERAL} "
+                          f"(dashboard {ethena.DASHBOARD})"))
 
 
 def add_asset(nodes: list[Node], edges: list[Edge], cid: int, symbol: str, address: str,

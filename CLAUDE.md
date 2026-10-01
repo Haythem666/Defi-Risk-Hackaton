@@ -22,7 +22,7 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 ## Structure
 - `src/schemas.py`: shared data contract (Position, Node, Edge, DependencyGraph, Scenario, RiskResult, Verdict). Do not change silently.
 - `src/data/`: fetchers for real data (one file per source): `pendle.py`, `defillama.py`, `morpho.py`,
-  `aave.py`, `chain.py` (public RPC reads + Sourcify source verification).
+  `aave.py`, `ethena.py` (where USDe backing sits), `chain.py` (public RPC reads + Sourcify).
   All HTTP goes through `cache.fetch_json`, which saves every response to `data/cache/` (committed)
   and falls back to it when the API is down. `DEFI_OFFLINE=1` forces cache only.
 - `src/graph/`: builds a DependencyGraph for a position. `build.py` dispatches on `Position.kind`:
@@ -51,8 +51,10 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
   DeFiLlama yield pools (the largest pool of the token, if it mints it rather than lends it), oracle price read on-chain and compared
   to the PT market price, oracle source verification (Sourcify), exit cost (Pendle router quote).
 - Fake: incident probabilities and severities in `src/risk/assumptions.py`.
-- Known gaps: Euler not covered (no keyless API), issuer's own dependencies (e.g. Ethena -> CEXs)
-  not discovered, exposure of lending edges is crude, exit cost ignores forgone yield and crisis
+- Issuer depth: Ethena -> exchange venues (Binance, OKX, ...) from Ethena's transparency API,
+  exposure = venue share of backing. Protocol/issuer nodes carry DeFiLlama category, audits and
+  past hacks (input for calibrating the risk model).
+- Known gaps: Euler not covered (no keyless API), venues only for Ethena, exposure of lending edges is crude, exit cost ignores forgone yield and crisis
   liquidity, no vaults, no portfolio view yet.
 
 ## Commands

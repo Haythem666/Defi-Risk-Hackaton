@@ -22,3 +22,11 @@ def test_pt_susde_has_all_five_layers():
     assert all(e.evidence for e in g.edges), "every edge needs evidence"
     ids = {n.id for n in g.nodes}
     assert all(e.source in ids and e.target in ids for e in g.edges)
+
+
+def test_pt_susde_reaches_ethena_hedging_venues():
+    g = build_graph(Position(1, PT_SUSDE_NOV26, 1_000_000))
+    venues = [e for e in g.edges if e.kind == "hedges_on"]
+    assert venues, "Ethena's exchange venues should be discovered"
+    assert all(e.source == "issuer:ethena-usde" and 0 < e.exposure < 1 for e in venues)
+    assert sum(e.exposure for e in venues) < 1  # the rest is unallocated cash

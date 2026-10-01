@@ -15,6 +15,21 @@ def protocol_tvl(slug: str) -> float:
     return float(fetch_json(f"{BASE}/tvl/{slug}"))
 
 
+def _protocol_meta(raw: dict) -> dict:
+    """Drop the TVL history, keep what describes the protocol's risk."""
+    keep = ("name", "category", "audits", "audit_links", "parentProtocol", "hacks", "chains")
+    return {k: raw.get(k) for k in keep}
+
+
+def protocol_info(slug: str) -> dict:
+    """Category, audit count and past hacks of a protocol."""
+    try:
+        return fetch_json(f"{BASE}/protocol/{slug}", max_age_s=24 * 3600,
+                          transform=_protocol_meta)
+    except Exception:
+        return {}
+
+
 def protocol_url(slug: str) -> str:
     return f"https://defillama.com/protocol/{slug}"
 

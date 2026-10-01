@@ -41,7 +41,7 @@ def build_graph(pos: Position) -> DependencyGraph:
     edges.append(Edge(pos_id, chain_id, "settles_on", 1.0, explorer(cid, m["pt"])))
 
     # Pendle protocol (PT/SY contracts)
-    proto_id = add_protocol(nodes, edges, cid, "pendle", "Pendle", explorer(cid, m["sy"]))
+    proto_id = add_protocol(nodes, edges, cid, "pendle-v2", "Pendle V2", explorer(cid, m["sy"]))
     edges.append(Edge(pos_id, proto_id, "contracts_of", 1.0,
                       f"PT and SY are Pendle contracts: {pendle_app}"))
 

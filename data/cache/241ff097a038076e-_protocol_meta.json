@@ -1,0 +1,1 @@
+{"fetched_at": 1790869343.8155406, "url": "https://api.llama.fi/protocol/ether.fi-stake", "params": null, "body": null, "data": {"name": "ether.fi Stake", "category": "Liquid Staking", "audits": "0", "audit_links": null, "parentProtocol": "parent#ether-fi", "hacks": [], "chains": ["Ethereum", "Arbitrum", "Scroll", "Base", "Optimism", "Berachain"]}}
