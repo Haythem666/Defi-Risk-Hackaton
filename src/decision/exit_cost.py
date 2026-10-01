@@ -15,8 +15,9 @@ def pendle_exit_cost(pos: Position, graph: DependencyGraph) -> tuple[float, str]
     market = next(n for n in graph.nodes if n.type == "market")
     asset = next(n for n in graph.nodes if n.type == "asset")
     pt_price = (asset.meta.get("price_usd") or 1.0) * (1 - (position.meta.get("pt_discount") or 0.0))
-    pt_amount = int(pos.size_usd / pt_price * 1e18)
     m = pendle.market(pos.chain_id, pos.market_address)
+    decimals = pendle.assets(pos.chain_id).get(m["pt"], {}).get("decimals", 18)
+    pt_amount = int(pos.size_usd / pt_price * 10 ** decimals)
     try:
         q = pendle.sell_quote(pos.chain_id, pos.market_address, m["pt"], m["sy"], pt_amount)
         cost = abs(q["priceImpact"]) + q["fee"]["usd"] / pos.size_usd
@@ -24,7 +25,8 @@ def pendle_exit_cost(pos: Position, graph: DependencyGraph) -> tuple[float, str]
     except Exception:
         cost = amm_exit_cost(pos.size_usd, market.meta["liquidity_usd"],
                              market.meta.get("fee_rate") or 0.0)
-        return cost, "Constant-product approximation (Pendle quote unavailable)"
+        return cost, ("Constant-product approximation (Pendle router gave no quote, "
+                      "usually because the size exceeds what the pool can absorb)")
 
 
 def lending_exit_cost(pos: Position, graph: DependencyGraph) -> tuple[float, str]:

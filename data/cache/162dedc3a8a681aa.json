@@ -1,0 +1,1 @@
+{"fetched_at": 1790869173.741862, "url": "https://rpc.hyperliquid.xyz/evm", "params": null, "body": {"jsonrpc": "2.0", "id": 1, "method": "eth_call", "params": [{"to": "0x3cD172D59A71D0e4AD41C76dab1fa2Bf8dee97Cb", "data": "0xa035b1fe"}, "latest"]}, "data": {"jsonrpc": "2.0", "id": 1, "result": "0x0000000000000000000000000000000000c58b8c26beb4a69787fe6540000000"}}

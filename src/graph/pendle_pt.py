@@ -24,7 +24,8 @@ def build_graph(pos: Position) -> DependencyGraph:
     assets = pendle.assets(cid)
     pt_symbol = assets.get(m["pt"], {}).get("symbol", f"PT-{m['name']}")
     underlying_name = assets.get(m["sy"], {}).get("name", m["name"])
-    pendle_app = f"https://app.pendle.finance/trade/markets/{m['address']}?chain=ethereum"
+    pendle_app = (f"https://app.pendle.finance/trade/markets/{m['address']}?chain=ethereum"
+                  if cid == 1 else f"Pendle API market {explorer(cid, m['address'])}")
 
     nodes: list[Node] = []
     edges: list[Edge] = []

@@ -3,7 +3,12 @@ verification from Sourcify. Used to inspect oracles."""
 
 from src.data.cache import fetch_json
 
-RPCS = {1: "https://ethereum-rpc.publicnode.com"}
+RPCS = {1: "https://ethereum-rpc.publicnode.com",
+        42161: "https://arbitrum-one-rpc.publicnode.com",
+        8453: "https://base-rpc.publicnode.com",
+        56: "https://bsc-rpc.publicnode.com",
+        999: "https://rpc.hyperliquid.xyz/evm",
+        9745: "https://rpc.plasma.to"}
 SOURCIFY = "https://sourcify.dev/server/v2/contract"
 
 # 4-byte function selectors (keccak256 of the signature)

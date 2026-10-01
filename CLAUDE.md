@@ -43,7 +43,8 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - Plan first for anything non-trivial, then code. Prefer Sonnet; use Opus only for hard problems.
 
 ## Current status
-- End-to-end slice works on Ethereum for three pocket types: any live Pendle PT (reference:
+- End-to-end slice works on six chains (Ethereum, Arbitrum, Base, BSC, HyperEVM, Plasma; each
+  protocol only where its API covers the chain) for three pocket types: any live Pendle PT (reference:
   PT-sUSDe 26NOV2026, `0x47ad2cd1dd15739a7a035b9d3b7828d916fef77e`), lending in a listed Morpho
   market, and supplying to an Aave v3 pool. A lender's exposure to collateral = pool utilization.
 - Real: graph discovery (Pendle + DeFiLlama + Morpho + Aave), issuer found automatically from
@@ -52,7 +53,7 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - Fake: incident probabilities and severities in `src/risk/assumptions.py`.
 - Known gaps: Euler not covered (no keyless API), issuer's own dependencies (e.g. Ethena -> CEXs)
   not discovered, exposure of lending edges is crude, exit cost ignores forgone yield and crisis
-  liquidity, no vaults, Ethereum only, no portfolio view yet.
+  liquidity, no vaults, no portfolio view yet.
 
 ## Commands
 - Install: `pip install -r requirements.txt`

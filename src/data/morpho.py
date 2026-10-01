@@ -4,6 +4,9 @@ from src.data.cache import fetch_json
 
 URL = "https://blue-api.morpho.org/graphql"
 
+# Chains with listed Morpho markets, and their name in app.morpho.org URLs.
+NETWORKS = {1: "ethereum", 42161: "arbitrum", 8453: "base", 999: "hyperevm"}
+
 _MARKETS_BY_COLLATERAL = """
 query($assets: [String!], $chains: [Int!]) {
   markets(first: 50, where: {collateralAssetAddress_in: $assets, chainId_in: $chains}) {
@@ -22,14 +25,15 @@ query($assets: [String!], $chains: [Int!]) {
 
 def markets_with_collateral(chain_id: int, asset_address: str) -> list[dict]:
     """Morpho markets that accept `asset_address` as collateral."""
+    if chain_id not in NETWORKS:
+        return []
     body = {"query": _MARKETS_BY_COLLATERAL,
             "variables": {"assets": [asset_address.lower()], "chains": [chain_id]}}
-    return fetch_json(URL, body=body)["data"]["markets"]["items"]
+    return ((fetch_json(URL, body=body).get("data") or {}).get("markets") or {}).get("items") or []
 
 
 def market_url(chain_id: int, market_id: str) -> str:
-    network = {1: "ethereum", 8453: "base"}.get(chain_id, str(chain_id))
-    return f"https://app.morpho.org/{network}/market/{market_id}"
+    return f"https://app.morpho.org/{NETWORKS.get(chain_id, chain_id)}/market/{market_id}"
 
 
 _MARKET_FIELDS = """
@@ -61,6 +65,8 @@ def listed_markets(chain_id: int, first: int = 30) -> list[dict]:
     q = f"""query($chains: [Int!], $first: Int) {{
       markets(first: $first, orderBy: SupplyAssetsUsd, orderDirection: Desc,
               where: {{chainId_in: $chains, listed: true}}) {{ items {{ {_MARKET_FIELDS} }} }} }}"""
+    if chain_id not in NETWORKS:
+        return []
     items = fetch_json(URL, body={"query": q, "variables": {"chains": [chain_id], "first": first}}
                        )["data"]["markets"]["items"]
     return [m for m in items if m.get("collateralAsset")]

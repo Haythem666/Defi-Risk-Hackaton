@@ -4,6 +4,9 @@ from src.data.cache import fetch_json
 
 URL = "https://api.v3.aave.com/graphql"
 
+# Chains where the Aave v3 API has markets (it rejects the others).
+CHAIN_IDS = (1, 42161, 8453, 56, 9745)
+
 _MARKETS = """
 query($chains: [ChainId!]!) {
   markets(request: {chainIds: $chains}) {
@@ -26,8 +29,10 @@ query($chains: [ChainId!]!) {
 
 def markets(chain_id: int) -> list[dict]:
     """All Aave v3 markets (pools) on a chain, with their reserves."""
+    if chain_id not in CHAIN_IDS:
+        return []
     data = fetch_json(URL, body={"query": _MARKETS, "variables": {"chains": [chain_id]}})
-    return data["data"]["markets"]
+    return (data.get("data") or {}).get("markets") or []
 
 
 def market(chain_id: int, pool_address: str) -> dict:

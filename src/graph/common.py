@@ -4,10 +4,13 @@ issuer discovery and oracle checks."""
 from src.data import chain, defillama
 from src.schemas import Edge, Node
 
-CHAINS = {1: "Ethereum", 42161: "Arbitrum", 8453: "Base", 56: "BSC"}
+# Chain id -> chain name as DeFiLlama spells it (used to match yield pools).
+CHAINS = {1: "Ethereum", 42161: "Arbitrum", 8453: "Base", 56: "BSC",
+          999: "Hyperliquid L1", 9745: "Plasma"}
 
 EXPLORERS = {1: "https://etherscan.io/address/", 42161: "https://arbiscan.io/address/",
-             8453: "https://basescan.org/address/", 56: "https://bscscan.com/address/"}
+             8453: "https://basescan.org/address/", 56: "https://bscscan.com/address/",
+             999: "https://hyperevmscan.io/address/", 9745: "https://plasmascan.to/address/"}
 
 # Lending markets / collaterals smaller than this cannot move a position.
 MIN_COLLATERAL_USD = 10_000

@@ -13,6 +13,7 @@ from src.data import aave, morpho, pendle
 from src.decision.exit_cost import exit_cost as position_exit_cost
 from src.decision.rule import decide
 from src.graph.build import build_graph
+from src.graph.common import CHAINS
 from src.risk.model import build_scenarios, simulate
 from src.schemas import Position
 
@@ -26,16 +27,19 @@ st.title("DeFi Risk Dependency: stay or exit?")
 # --- Inputs ---------------------------------------------------------------
 with st.sidebar:
     st.header("Position")
-    chain_id = 1
     kinds = {"Pendle PT": "pendle_pt", "Lend on Morpho": "morpho_supply",
              "Supply to Aave": "aave_supply"}
     kind = kinds[st.radio("Pocket type", list(kinds))]
+    # Only offer chains where this pocket type exists.
+    supported = {"pendle_pt": list(CHAINS), "morpho_supply": list(morpho.NETWORKS),
+                 "aave_supply": list(aave.CHAIN_IDS)}[kind]
+    chain_id = st.selectbox("Chain", supported, format_func=lambda c: CHAINS[c])
     asset_address = None
     if kind == "pendle_pt":
         markets = sorted(pendle.active_markets(chain_id), key=lambda m: m["name"])
         labels = {f"{m['name']} ({m['expiry'][:10]})": m["address"] for m in markets}
         default = next((i for i, k in enumerate(labels) if k.startswith("sUSDe (")), 0)
-        address = labels[st.selectbox("Pendle PT market (Ethereum)", list(labels), index=default)]
+        address = labels[st.selectbox("Pendle PT market", list(labels), index=default)]
     elif kind == "morpho_supply":
         labels = {f"{m['collateralAsset']['symbol']} / {m['loanAsset']['symbol']} "
                   f"({m['state']['supplyAssetsUsd'] / 1e6:,.0f}M)": m["marketId"]
