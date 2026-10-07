@@ -22,18 +22,19 @@ def _key(method: str, url: str, params: dict | None, body: dict | None) -> str:
 
 
 def fetch_json(url: str, params: dict | None = None, body: dict | None = None,
-               max_age_s: int = 3600, transform=None):
+               max_age_s: int = 3600, transform=None, cache_dir: Path | None = None):
     """GET (or POST if `body` is given) and return parsed JSON.
 
     Uses the cache if it is fresher than `max_age_s`, if DEFI_OFFLINE=1,
     or if the request fails. `transform` (optional) slims the response
-    before it is cached, for large payloads.
+    before it is cached, for large payloads. `cache_dir` overrides where
+    the response is saved (bulky inputs that the demo does not need).
     """
     method = "POST" if body is not None else "GET"
     key = _key(method, url, params, body)
     if transform is not None:
         key += f"-{transform.__name__}"
-    path = CACHE_DIR / f"{key}.json"
+    path = (cache_dir or CACHE_DIR) / f"{key}.json"
     cached = json.loads(path.read_text()) if path.exists() else None
 
     offline = os.environ.get("DEFI_OFFLINE") == "1"
@@ -52,7 +53,7 @@ def fetch_json(url: str, params: dict | None = None, body: dict | None = None,
             return cached["data"]
         raise
 
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"fetched_at": time.time(), "url": url,
                                 "params": params, "body": body, "data": data}))
     return data

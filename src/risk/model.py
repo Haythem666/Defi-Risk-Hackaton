@@ -1,9 +1,11 @@
 """Scenarios -> propagation to the position -> Monte Carlo -> RiskResult."""
 
+import math
+
 import networkx as nx
 import numpy as np
 
-from src.risk.assumptions import ASSUMPTIONS
+from src.risk.assumptions import params_for
 from src.schemas import DependencyGraph, RiskResult, Scenario
 
 
@@ -35,9 +37,11 @@ def path_exposure(G: nx.DiGraph, source: str, target: str) -> float:
     return min(1.0, total)
 
 
-def horizon_probability(annual_p: float, horizon_days: int) -> float:
-    """Constant-hazard conversion of a yearly probability to the horizon."""
-    return 1 - (1 - annual_p) ** (horizon_days / 365)
+def horizon_probability(annual_rate: float, horizon_days: int) -> float:
+    """Probability of at least one incident over the horizon, for incidents
+    arriving at `annual_rate` per year (Poisson). Stays below 1 even for
+    rates above 1/year (algorithmic stablecoins depeg more than once a year)."""
+    return 1 - math.exp(-annual_rate * horizon_days / 365)
 
 
 def build_scenarios(g: DependencyGraph, horizon_days: int) -> list[Scenario]:
@@ -49,7 +53,7 @@ def build_scenarios(g: DependencyGraph, horizon_days: int) -> list[Scenario]:
         exp = path_exposure(G, g.position_id, n.id)
         if exp == 0:
             continue
-        for a in ASSUMPTIONS.get(n.type, []):
+        for a in params_for(n):
             out.append(Scenario(
                 node_id=n.id, incident=a["incident"],
                 probability=horizon_probability(a["annual_p"], horizon_days),

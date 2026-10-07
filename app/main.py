@@ -140,4 +140,4 @@ c[4].metric("Breakeven p*", "-" if verdict.breakeven_probability is None
 (st.error if verdict.decision == "EXIT" else st.success)(verdict.reason)
 if "stuck" in cost_source:
     st.warning(cost_source)
-st.caption("Phase 0: incident probabilities and severities are placeholders (see src/risk/assumptions.py).")
+st.caption("Rates and severities: DATA rows are calibrated on DeFiLlama hacks and stablecoin history (data/calibration.json); JUDGEMENT rows are expert estimates.")
