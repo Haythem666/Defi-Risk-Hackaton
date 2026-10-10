@@ -297,6 +297,67 @@ def _add_other_holders(asset: Node, cid: int, address: str, remote: dict[str, st
                       dex_pools_usd=sum(r["tvl_usd"] for r in dexes))
 
 
+# Contagion: other lenders holding the same collateral. When its price drops
+# they liquidate too, and every liquidator sells into the same DEX liquidity.
+MAX_CONTAGION = 5            # largest other lenders shown per collateral
+MIN_CONTAGION_USD = 100_000  # smaller holders are left out
+LENDING_CATEGORIES = {"Lending", "CDP"}
+
+
+def add_contagion(nodes: list[Node], edges: list[Edge]) -> None:
+    """For each collateral in the graph, the other lending protocols that hold
+    it (DeFiLlama single-token pools, here and on the chains it is bridged to),
+    as nodes. Run once the graph is built, so the markets already in it are
+    not counted twice.
+
+    Exposure of the collateral to one of them = their forced sales if SHOCK of
+    their collateral is liquidated, over the token's DEX liquidity, capped at
+    1 (1 when no DEX pool holds the token). Only lending protocols count
+    (DeFiLlama category): a Pendle pool or the issuer's own staking pool also
+    hold the token but do not liquidate anyone."""
+    try:
+        category = {p["slug"]: p.get("category") for p in defillama.protocols()}
+    except Exception:
+        return
+    for asset in [n for n in nodes if n.type == "asset" and n.meta.get("posted_as_collateral")]:
+        own = {}  # collateral of this token already in the graph, per chain (Morpho markets)
+        for e in edges:
+            if e.kind == "secured_by" and e.target == asset.id:
+                lend = next(n for n in nodes if n.id == e.source)
+                own[lend.chain] = own.get(lend.chain, 0) + (lend.meta.get("collateral_usd") or 0)
+        by_lender: dict[tuple, dict] = {}
+        for r in asset.meta["posted_as_collateral"]:
+            if category.get(r["project"]) not in LENDING_CATEGORIES:
+                continue
+            key = (r["project"], r["chain"])
+            row = by_lender.setdefault(key, {"usd": 0.0, "urls": []})
+            row["usd"] += r["tvl_usd"] or 0
+            row["urls"].append(r["url"])
+        for (project, ch), row in by_lender.items():
+            if project.startswith("morpho"):  # minus the markets already drawn
+                row["usd"] = max(0.0, row["usd"] - own.get(ch, 0))
+        dex = asset.meta.get("dex_pools_usd") or 0.0
+        exit_node = next((n for n in nodes if n.id == f"market:dex-exit-{asset.name}"), None)
+        no_market = exit_node is not None and exit_node.meta.get("has_market") is False
+        if not dex and not no_market:
+            # DeFiLlama lists no DEX pool but a DEX route exists: depth unknown, not drawn
+            asset.meta["contagion_unmeasured"] = True
+            continue
+        top = sorted(((k, r) for k, r in by_lender.items() if r["usd"] >= MIN_CONTAGION_USD),
+                     key=lambda kr: -kr[1]["usd"])[:MAX_CONTAGION]
+        for (project, ch), row in top:
+            exposure = min(1.0, SHOCK * row["usd"] / dex) if dex else 1.0
+            node_id = add_node(nodes, Node(
+                f"lending:contagion-{project}-{ch}-{asset.name}".lower(), "lending",
+                f"{project} ({ch}): {asset.name} as collateral", ch,
+                {"role": "contagion", "collateral_usd": row["usd"], "dex_liquidity_usd": dex}))
+            edges.append(Edge(asset.id, node_id, "also_collateral_in", round(exposure, 3),
+                              f"{project} on {ch} holds {row['usd']:,.0f} USD of {asset.name} "
+                              f"(DeFiLlama {', '.join(row['urls'][:2])}); liquidating {SHOCK:.0%} of "
+                              f"it sells {SHOCK * row['usd']:,.0f} USD into {dex:,.0f} USD of DEX "
+                              f"pools holding {asset.name}"))
+
+
 def add_liquidation_exit(nodes: list[Node], edges: list[Edge], cid: int, lend_id: str,
                          m: dict, util: float, oracle_price_usd: float | None) -> None:
     """Can liquidators sell the collateral of a Morpho market? Quote selling

@@ -92,3 +92,14 @@ def test_pt_and_vault_collateral_are_unwrapped():
     # a PT is quoted on its Pendle pool, not flagged as having no market
     pt_exit = g.node("market:dex-exit-PT-reUSD-10DEC2026")
     assert pt_exit.meta["has_market"] is True
+
+
+def test_other_lenders_of_the_collateral_become_contagion_nodes(graph):
+    edges = _out(graph, "asset:PST", "also_collateral_in")
+    lenders = {graph.node(e.target).name for e in edges}
+    assert any("kamino-lend (Solana)" in n for n in lenders)  # found through the bridge
+    assert not any("pendle" in n or "huma" in n for n in lenders)  # only lending protocols
+    morpho = next(graph.node(e.target) for e in edges if "morpho" in e.target)
+    own = graph.node(next(e.source for e in graph.edges if e.kind == "secured_by"
+                          and e.target == "asset:PST")).meta["collateral_usd"]
+    assert morpho.meta["collateral_usd"] < 200e6 and own > 0  # the market drawn is not counted twice
