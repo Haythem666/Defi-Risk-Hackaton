@@ -78,3 +78,6 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - Run app: `streamlit run app/main.py`
 - Tests: `pytest` (the graph test runs offline on `data/cache/`)
 - Offline demo: `DEFI_OFFLINE=1 streamlit run app/main.py`
+- See every API call behind a graph (what was asked, live or cache, the answer):
+  `python -m src.trace morpho_vault 1 <vault address> --api morpho [--full]`; same log in the app
+  (expander "API calls behind this graph") and on the `defi.api` logger.

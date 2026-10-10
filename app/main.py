@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 import streamlit as st
 
-from src.data import aave, hyperliquid, morpho, pendle
+from src.data import aave, cache, hyperliquid, morpho, pendle
 from src.decision.exit_cost import exit_cost as position_exit_cost
 from src.decision.rule import decide
 from src.graph.build import build_graph
@@ -87,10 +87,13 @@ pos = Position(chain_id, address, float(size), horizon, book_share, kind, asset_
 
 @st.cache_data(ttl=600, show_spinner="Discovering dependencies from live data...")
 def load_graph(p: Position):
-    return build_graph(p)
+    """The graph, and the log of every API call made to build it."""
+    cache.CALLS.clear()
+    g = build_graph(p)
+    return g, list(cache.CALLS)
 
 
-graph = load_graph(pos)
+graph, api_calls = load_graph(pos)
 by_id = {n.id: n for n in graph.nodes}
 
 # --- 1. Dependency graph --------------------------------------------------
@@ -105,6 +108,13 @@ st.graphviz_chart("\n".join(dot))
 
 with st.expander("Edges and evidence"):
     st.dataframe(pd.DataFrame([vars(e) for e in graph.edges]), width="stretch")
+
+with st.expander(f"API calls behind this graph ({len(api_calls)})"):
+    apis = sorted({c["api"] for c in api_calls})
+    shown = st.multiselect("APIs", apis, default=["morpho"] if "morpho" in apis else apis)
+    st.caption("What each source was asked and the start of its answer; the whole answer is "
+               "in the cache file. Same log in the terminal: python -m src.trace <kind> <chain> <address>")
+    st.dataframe(pd.DataFrame([c for c in api_calls if c["api"] in shown]), width="stretch")
 
 flags = [{"contract": n.name, "red flag": f} for n in graph.nodes for f in n.meta.get("flags") or []]
 if flags:
