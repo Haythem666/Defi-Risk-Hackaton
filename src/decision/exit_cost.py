@@ -46,7 +46,24 @@ def lending_exit_cost(pos: Position, graph: DependencyGraph) -> tuple[float, str
                  f"the rest is stuck until borrowers repay")
 
 
+def contract_exit_cost(pos: Position, graph: DependencyGraph) -> tuple[float, str]:
+    """A contract found by the crawler: an ERC-4626 token can be redeemed at
+    the contract's own price (no market sale), possibly after a cooldown.
+    Anything else has no live quote yet, so the brief's reference is used."""
+    held = next(e.target for e in graph.edges
+                if e.source == graph.position_id and e.kind == "holds")
+    root = graph.node(held).meta
+    if root.get("redeemable"):
+        cd = root.get("cooldown_s")
+        wait = f" after a {cd / 86400:.1f}-day cooldown" if cd else ""
+        return 0.0, (f"Redeem directly from the contract{wait}, no market sale (gas aside); "
+                     f"a vault can only pay out its idle liquidity")
+    return 0.11, "No live exit quote for this contract: the brief's reference exit cost (11%)"
+
+
 def exit_cost(pos: Position, graph: DependencyGraph) -> tuple[float, str]:
     if pos.kind == "pendle_pt":
         return pendle_exit_cost(pos, graph)
+    if pos.kind == "contract":
+        return contract_exit_cost(pos, graph)
     return lending_exit_cost(pos, graph)

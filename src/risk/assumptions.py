@@ -107,6 +107,10 @@ def _depeg_row(symbol: str) -> dict:
 def params_for(node: Node) -> list[dict]:
     """Incident scenarios (annual probability, severity, rationale) for a node."""
     t, meta = node.type, node.meta
+    if t == "admin":  # key theft / admin abuse is already in the hack rate of the contract it controls
+        return []
+    if meta.get("part_of"):  # e.g. the aggregator behind an oracle proxy: counted on the proxy
+        return []
     if t in JUDGEMENT:
         return [JUDGEMENT[t]]
     if CAL is None:
@@ -123,6 +127,8 @@ def params_for(node: Node) -> list[dict]:
             return [_hack_row("Derivatives")]
         return [_row("hack", CAL["cex"])]
     if t == "asset":
+        if meta.get("wraps"):  # a wrapper's own risk is its code; the peg is the wrapped token's
+            return [_hack_row(meta.get("category"))]
         if is_usd_stable(node.name):
             return [_depeg_row(node.name)]
         return [JUDGEMENT["asset_non_usd"]]

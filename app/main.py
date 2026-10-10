@@ -19,7 +19,8 @@ from src.schemas import Position
 
 COLORS = {"position": "#f4a261", "chain": "#8ecae6", "protocol": "#90be6d",
           "asset": "#ffd166", "issuer": "#f28482", "oracle": "#cdb4db",
-          "market": "#a8dadc", "lending": "#b5838d", "venue": "#adb5bd", "vault": "#e9c46a"}
+          "market": "#a8dadc", "lending": "#b5838d", "venue": "#adb5bd", "vault": "#e9c46a",
+          "admin": "#ffafcc"}
 
 st.set_page_config(page_title="DeFi Risk Dependency", layout="wide")
 st.title("DeFi Risk Dependency: stay or exit?")
@@ -29,12 +30,13 @@ with st.sidebar:
     st.header("Position")
     kinds = {"Pendle PT": "pendle_pt", "Lend on Morpho": "morpho_supply",
              "Supply to Aave": "aave_supply", "Morpho vault": "morpho_vault",
-             "Hyperliquid vault (perps)": "hyperliquid_vault"}
+             "Hyperliquid vault (perps)": "hyperliquid_vault",
+             "Any contract (on-chain crawler)": "contract"}
     kind = kinds[st.radio("Pocket type", list(kinds))]
     # Only offer chains where this pocket type exists.
     supported = {"pendle_pt": list(CHAINS), "morpho_supply": list(morpho.NETWORKS),
                  "aave_supply": list(aave.CHAIN_IDS), "morpho_vault": list(morpho.NETWORKS),
-                 "hyperliquid_vault": [999]}[kind]
+                 "hyperliquid_vault": [999], "contract": list(CHAINS)}[kind]
     chain_id = st.selectbox("Chain", supported, format_func=lambda c: CHAINS[c])
     asset_address = None
     if kind == "pendle_pt":
@@ -51,6 +53,13 @@ with st.sidebar:
         labels = {f"{v['name']} · {v['asset']['symbol']} ({v['state']['totalAssetsUsd'] / 1e6:,.0f}M)":
                   v["address"] for v in morpho.listed_vaults(chain_id)}
         address = labels[st.selectbox("Morpho vault", list(labels))]
+    elif kind == "contract":
+        address = st.text_input(
+            "Token or vault address", "0x9D39A5DE30e57443BfF2A8307A4256c8797A3497" if chain_id == 1 else "",
+            help="Dependencies are read from the contracts themselves (default: sUSDe). "
+                 "Try the Steakhouse USDC vault: 0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB").strip()
+        if not address:
+            st.stop()
     elif kind == "hyperliquid_vault":
         address = st.text_input("Hyperliquid vault address", hyperliquid.HLP,
                                 help="Default: HLP, the exchange's market-making vault").strip()
@@ -90,6 +99,12 @@ st.graphviz_chart("\n".join(dot))
 with st.expander("Edges and evidence"):
     st.dataframe(pd.DataFrame([vars(e) for e in graph.edges]), width="stretch")
 
+flags = [{"contract": n.name, "red flag": f} for n in graph.nodes for f in n.meta.get("flags") or []]
+if flags:
+    st.markdown("**Red flags** (read on-chain: who controls each contract, upgradeability, "
+                "withdrawal delays, unpublished code)")
+    st.dataframe(pd.DataFrame(flags), width="stretch")
+
 oracles = [n for n in graph.nodes if n.type == "oracle"]
 if oracles:
     st.markdown("**Oracle checks** (price vs PT market price, public source code)")
@@ -97,8 +112,8 @@ if oracles:
         "oracle": n.meta.get("address") or n.name,
         "price (USD)": f"{n.meta['price_usd']:.4f}" if n.meta.get("price_usd") else "-",
         "gap to market": f"{n.meta['gap_to_market']:+.2%}" if n.meta.get("gap_to_market") is not None else "-",
-        "source verified": {True: "yes", False: "NO"}.get(n.meta.get("source_verified"), "n/a"),
-        "proxy of": n.meta.get("proxy_of") or "-",
+        "source verified": {True: "yes", False: "NO"}.get(n.meta.get("source_verified", n.meta.get("verified")), "n/a"),
+        "proxy of": n.meta.get("proxy_of") or n.meta.get("implementation") or "-",
         "read from": n.meta.get("source")} for n in oracles]), width="stretch")
 
 # --- 2. Risk --------------------------------------------------------------

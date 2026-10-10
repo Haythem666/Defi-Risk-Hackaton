@@ -26,6 +26,36 @@ def _rpc(chain_id: int, method: str, params: list):
     return resp["result"]
 
 
+def _slim_batch(resp):
+    """Bytecode is only checked for presence: keep its start, not 20 KB of it."""
+    if isinstance(resp, list):
+        for r in resp:
+            if isinstance(r.get("result"), str) and len(r["result"]) > 2048:
+                r["result"] = r["result"][:2048]
+    return resp
+
+
+def batch(chain_id: int, calls: list[tuple[str, list]]) -> list:
+    """Several JSON-RPC calls in one request. Returns each call's result, or
+    None where it failed (e.g. the contract has no such function)."""
+    body = [{"jsonrpc": "2.0", "id": i, "method": m, "params": p}
+            for i, (m, p) in enumerate(calls)]
+    resp = fetch_json(RPCS[chain_id], body=body, max_age_s=600, transform=_slim_batch)
+    by_id = {r.get("id"): r for r in resp} if isinstance(resp, list) else {}
+    return [by_id.get(i, {}).get("result") for i in range(len(calls))]
+
+
+def contract_info(chain_id: int, address: str) -> dict:
+    """Sourcify: is the source code public, and the contract's name."""
+    try:
+        r = fetch_json(f"{SOURCIFY}/{chain_id}/{address}", {"fields": "compilation.name"},
+                       max_age_s=24 * 3600)
+    except Exception:
+        return {"verified": False, "name": None}
+    return {"verified": bool(r.get("match")),
+            "name": (r.get("compilation") or {}).get("name")}
+
+
 def eth_call(chain_id: int, to: str, data: str) -> str:
     return _rpc(chain_id, "eth_call", [{"to": to, "data": data}, "latest"])
 
