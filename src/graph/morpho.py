@@ -2,11 +2,11 @@
 
 Two positions:
 - lending in one Morpho market (build_morpho_supply),
-- depositing in a Morpho vault, v1 or V2 (build_morpho_vault).
+- depositing in a Morpho Vault V2 (build_morpho_vault).
 
 What each piece of the graph comes from:
     position --deposited_in--> vault            (the address you gave)
-    vault --allocates_to (share)--> market      (vault allocation / V2 adapters)
+    vault --allocates_to (share)--> market      (through the vault's adapters)
     market --secured_by (utilization)--> collateral token
     market --priced_by--> oracle
     vault/market --runs_on--> Morpho  --deployed_on--> chain
@@ -108,49 +108,25 @@ def build_morpho_supply(pos: Position) -> DependencyGraph:
 
 
 def build_morpho_vault(pos: Position) -> DependencyGraph:
-    """Depositing in a Morpho vault. Asks the API for a v1 vault first, then a V2."""
+    """Depositing in a Morpho Vault V2."""
     g = Graph(pos.chain_id)
-    v1 = morpho.vault(pos.chain_id, pos.market_address)
-    v = v1 or morpho.vault_v2(pos.chain_id, pos.market_address)
+    v = morpho.vault_v2(pos.chain_id, pos.market_address)
     if v is None:
-        raise ValueError(f"No Morpho vault (v1 or V2) at {pos.market_address} on {g.chain}")
+        raise ValueError(f"No Morpho Vault V2 at {pos.market_address} on {g.chain}")
     asset = v["asset"]
     pos_id = g.node(f"position:vault-{v['address'][:10]}", "position",
                     f"Deposit {asset['symbol']} · {v['name']}", size_usd=pos.size_usd)
     g.edge(pos_id, g.chain_node(), "settles_on", 1.0, g.link(v["address"]))
     g.edge(pos_id, g.token(asset), "denominated_in", 1.0,
            f"Vault shares are a claim on {asset['symbol']}: {morpho.vault_url(g.cid, v['address'])}")
-    if v1:
-        add_vault_v1(g, v1, pos_id, 1.0, "deposited_in")
-    else:
-        add_vault_v2(g, v, pos_id, 1.0, "deposited_in")
+    add_vault_v2(g, v, pos_id, 1.0, "deposited_in")
     return g.done(pos_id)
-
-
-def add_vault_v1(g: Graph, v: dict, parent: str, share: float, kind: str) -> str:
-    """A v1 vault: its allocation lists how much sits in each market."""
-    st, url = v["state"], morpho.vault_url(g.cid, v["address"])
-    total = st["totalAssetsUsd"] or 0.0
-    vault_id = g.node(f"vault:{v['address'].lower()}", "vault", v["name"], address=v["address"],
-                      version=1, total_usd=total, liquidity_usd=(v.get("liquidity") or {}).get("usd"),
-                      curators=[c["name"] for c in st.get("curators") or []],
-                      timelock_days=(st.get("timelock") or 0) / 86400, fee=st.get("fee"),
-                      warnings=[w["type"] for w in v.get("warnings") or []])
-    g.edge(parent, vault_id, kind, share, url)
-    g.edge(vault_id, g.morpho(), "runs_on", 1.0, url)
-    for a in st["allocation"]:
-        s = (a["supplyAssetsUsd"] or 0) / total if total else 0.0
-        if s * share < MIN_ALLOCATION_SHARE:
-            continue
-        m = morpho.market(g.cid, a["market"]["marketId"])
-        if m and m.get("collateralAsset"):  # else idle market: cash, nothing lent out
-            add_market(g, m, vault_id, s, "allocates_to")
-    return vault_id
 
 
 def add_vault_v2(g: Graph, v: dict, parent: str, share: float, kind: str, depth: int = 0) -> str:
     """A V2 vault: money reaches markets through adapters. Each adapter says
-    how many USD it holds; a MorphoMarketV1 adapter also lists its markets."""
+    how many USD it holds; a MorphoMarketV1 adapter also lists its markets,
+    a MorphoVaultV2 adapter points to another V2 vault."""
     url = morpho.vault_url(g.cid, v["address"])
     total = v["totalAssetsUsd"] or 0.0
     locks = {morpho.V2_TIMELOCKS.get(t["selector"], t["selector"]): t["duration"] / 86400
@@ -185,12 +161,14 @@ def add_vault_v2(g: Graph, v: dict, parent: str, share: float, kind: str, depth:
         s = (ad.get("assetsUsd") or 0) / total if total else 0.0
         if s * share < MIN_ALLOCATION_SHARE:
             continue
-        if ad["type"] == "MetaMorpho":  # money parked in a v1 vault
-            inner = morpho.vault(g.cid, ad["metaMorpho"]["address"])
-            if inner:
-                add_vault_v1(g, inner, vault_id, s, "allocates_to")
-        elif ad["type"] == "MorphoVaultV2" and depth < MAX_V2_NESTING:  # in another V2 vault
-            inner = morpho.vault_v2(g.cid, ad["innerVault"]["address"])
-            if inner:
-                add_vault_v2(g, inner, vault_id, s, "allocates_to", depth + 1)
+        inner = (ad.get("innerVault") or {}).get("address")
+        if ad["type"] == "MorphoVaultV2" and inner and depth < MAX_V2_NESTING:
+            inner_v = morpho.vault_v2(g.cid, inner)  # money parked in another V2 vault
+            if inner_v:
+                add_vault_v2(g, inner_v, vault_id, s, "allocates_to", depth + 1)
+                continue
+        # Any other adapter (e.g. into an older v1 vault): shown, not followed.
+        adapter = g.node(f"adapter:{ad['address'].lower()}", "vault",
+                         f"{ad['type']} adapter (not followed)", address=ad["address"])
+        g.edge(vault_id, adapter, "allocates_to", s, g.link(ad["address"]))
     return vault_id

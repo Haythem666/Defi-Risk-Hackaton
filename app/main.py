@@ -27,7 +27,7 @@ st.title("DeFi Risk Dependency: stay or exit?")
 # --- Inputs ---------------------------------------------------------------
 with st.sidebar:
     st.header("Position (Morpho only)")
-    kinds = {"Morpho vault": "morpho_vault", "Lend in a Morpho market": "morpho_supply"}
+    kinds = {"Morpho Vault V2": "morpho_vault", "Lend in a Morpho market": "morpho_supply"}
     kind = kinds[st.radio("Pocket type", list(kinds))]
     chain_id = st.selectbox("Chain", list(morpho.NETWORKS), format_func=lambda c: morpho.CHAINS[c])
     if kind == "morpho_supply":
@@ -36,14 +36,10 @@ with st.sidebar:
                   for m in morpho.listed_markets(chain_id)}
         address = labels[st.selectbox("Morpho market (collateral / lent asset)", list(labels))]
     else:
-        vaults = [(v["name"], v["asset"]["symbol"], v["state"]["totalAssetsUsd"] or 0, v["address"], "")
-                  for v in morpho.listed_vaults(chain_id)]
-        vaults += [(v["name"], v["asset"]["symbol"], v["totalAssetsUsd"] or 0, v["address"], " · V2")
-                   for v in morpho.listed_vaults_v2(chain_id)]
-        labels = {f"{n} · {s} ({t / 1e6:,.0f}M){ver}": a
-                  for n, s, t, a, ver in sorted(vaults, key=lambda x: -x[2])}
-        address = labels[st.selectbox("Morpho vault (v1 and V2, largest listed)", list(labels))]
-        typed = st.text_input("...or paste any Morpho vault address (v1 or V2)",
+        labels = {f"{v['name']} · {v['asset']['symbol']} ({(v['totalAssetsUsd'] or 0) / 1e6:,.0f}M)":
+                  v["address"] for v in morpho.listed_vaults_v2(chain_id)}
+        address = labels[st.selectbox("Morpho Vault V2 (largest listed)", list(labels))]
+        typed = st.text_input("...or paste any Morpho Vault V2 address",
                               help="E.g. Belem RWA EURCV: 0xD6d4b804014EF27836dBe9f8f6Bf6c71251548Ec").strip()
         address = typed or address
     size = st.number_input("Pocket size (USD)", 10_000, 500_000_000, 1_000_000, step=100_000)

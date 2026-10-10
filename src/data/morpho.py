@@ -54,36 +54,7 @@ def market_url(chain_id: int, market_id: str) -> str:
     return f"https://app.morpho.org/{NETWORKS.get(chain_id, chain_id)}/market/{market_id}"
 
 
-# --- Vaults v1 ("MetaMorpho") ------------------------------------------------
-
-_VAULT_FIELDS = """
-  address
-  name
-  listed
-  asset { symbol address price { usd } }
-  liquidity { usd }
-  warnings { type level }
-  state { totalAssetsUsd netApy fee timelock guardian curators { name }
-          allocation { supplyAssetsUsd market { marketId } } }
-"""
-
-
-def vault(chain_id: int, address: str) -> dict | None:
-    """A v1 vault: curator, fee, timelock, liquidity and how much it has in
-    each market (allocation). None if the address is not a v1 vault."""
-    q = f"query($a: String!, $chain: Int!) {{ vaultByAddress(address: $a, chainId: $chain) {{ {_VAULT_FIELDS} }} }}"
-    return _ask(q, {"a": address, "chain": chain_id}, "vaultByAddress")
-
-
-def listed_vaults(chain_id: int, first: int = 30) -> list[dict]:
-    q = """query($chains: [Int!], $first: Int) {
-      vaults(first: $first, orderBy: TotalAssetsUsd, orderDirection: Desc,
-             where: {chainId_in: $chains, listed: true}) {
-        items { address name asset { symbol } state { totalAssetsUsd } } } }"""
-    return (_ask(q, {"chains": [chain_id], "first": first}, "vaults") or {}).get("items") or []
-
-
-# --- Vaults V2 ---------------------------------------------------------------
+# --- Vaults (Morpho Vault V2) -------------------------------------------------
 
 # A V2 vault reaches markets through "adapters", and each of the curator's
 # powers has its own timelock, identified by a function selector.
@@ -109,15 +80,15 @@ _VAULT_V2_FIELDS = """
   adapters(first: 20) { items { address type assetsUsd
     ... on MorphoMarketV1Adapter {
       positions(first: 50) { items { market { marketId } state { supplyAssetsUsd } } } }
-    ... on MetaMorphoAdapter { metaMorpho { address } }
     ... on MorphoVaultV2Adapter { innerVault { address } }
   } }
 """
 
 
 def vault_v2(chain_id: int, address: str) -> dict | None:
-    """A V2 vault: its adapters (Morpho markets, v1 vaults, other V2 vaults)
-    with the USD each holds, curator, owner and per-setting timelocks."""
+    """A V2 vault: its adapters (Morpho markets or other V2 vaults) with the
+    USD each holds, curator, owner and per-setting timelocks. None if the
+    address is not a V2 vault (older v1 vaults are not covered on this branch)."""
     q = f"query($a: String!, $chain: Int!) {{ vaultV2ByAddress(address: $a, chainId: $chain) {{ {_VAULT_V2_FIELDS} }} }}"
     return _ask(q, {"a": address, "chain": chain_id}, "vaultV2ByAddress")
 

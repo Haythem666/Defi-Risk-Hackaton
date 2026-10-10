@@ -1,8 +1,8 @@
 # DeFi Risk Dependency: EPFL Hackathon 2026 (Belem Capital challenge)
 
 > **Branch `claude/morpho-only`: a learning version.** Only the Morpho API is used (no
-> DeFiLlama, no on-chain reads, no other protocol). Two positions: a Morpho vault (v1 or V2)
-> and lending in a Morpho market. Code: `src/data/morpho.py` (the queries),
+> DeFiLlama, no on-chain reads, no other protocol). Two positions: a Morpho Vault V2 (Belem's
+> vaults are all V2; older v1 vaults are not covered here) and lending in a Morpho market. Code: `src/data/morpho.py` (the queries),
 > `src/graph/morpho.py` (answers -> nodes and edges), then the same risk model and decision.
 > See every call: `python -m src.trace morpho_vault 1 <vault address> --full`.
 > The full version lives on `claude/hackaton-prep-hk0zf3`.
