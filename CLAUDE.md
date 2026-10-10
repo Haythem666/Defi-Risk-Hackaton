@@ -41,8 +41,16 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - `src/risk/`: `calibration.py` (builds `data/calibration.json` from DeFiLlama hacks, protocol TVL
   history and stablecoin prices: `python -m src.risk.calibration`), `assumptions.py` (picks the rate
   and severity for each node: DATA rows from the calibration, JUDGEMENT rows labelled as such),
-  `model.py` (scenarios, propagation, Poisson horizon probability, Monte Carlo -> RiskResult).
-- `src/decision/`: `exit_cost.py` (live Pendle router quote; pool liquidity for loans) + `rule.py` (STAY/EXIT -> Verdict).
+  `model.py` (scenarios, propagation, Poisson horizon probability, Monte Carlo -> RiskResult),
+  `stress.py` (stress engine: each node hit at 5/20/50/100%, losses spread by capped DebtRank
+  fixed-point propagation; value edges add up, shared dependencies count once (max); a lender loses
+  only beyond the LLTV buffer, recovering the collateral at its DEX exit price; liquidation-spiral
+  loop gain g per collateral, stalled when liquidations do not pay; spectral radius of the exposure
+  matrix with spiral gains on the diagonal). Scenario losses come from this engine.
+- `src/decision/`: `exit_cost.py` (live Pendle router quote; pool liquidity for loans) + `rule.py` (STAY/EXIT -> Verdict)
+  + `snell.py` (optimal-stopping exit trigger for lending positions: exit when utilization > u* =
+  1 - (KAPPA (H - C) / r)^(1/GAMMA), H = stress-engine haircut if trapped; KAPPA/GAMMA JUDGEMENT,
+  anchored on a 0.2/yr freeze hazard at the 90% target utilization).
 - `app/`: Streamlit app (`streamlit run app/main.py`).
 - `data/examples/`: hand-made example graphs and past incidents.
 - `tests/`: pytest.

@@ -14,6 +14,8 @@ from src.decision.exit_cost import exit_cost as position_exit_cost
 from src.decision.rule import decide
 from src.graph.build import build_graph
 from src.graph.common import CHAINS, EVM_CHAINS
+from src.decision.snell import exit_rule
+from src.risk import stress
 from src.risk.model import build_scenarios, simulate
 from src.schemas import Position
 
@@ -196,6 +198,30 @@ st.dataframe(pd.DataFrame([{
     "expected": f"{s.probability * s.loss_if_hit:.3%}", "rationale": s.rationale}
     for s in scenarios]), width="stretch")
 
+# --- Stress engine ----------------------------------------------------------
+st.subheader("Stress engine: what each failure costs this position")
+st.caption("Each dependency is hit alone at 5%, 20%, 50% and 100%; the loss spreads through the graph "
+           "(capped DebtRank propagation: value slices add up, shared dependencies count once, lenders "
+           "lose only beyond the borrowers' LLTV buffer, recovering the collateral at its DEX exit price).")
+table = stress.stress_table(graph)
+st.dataframe(pd.DataFrame([{
+    "dependency": r["name"], "type": r["type"],
+    **{f"hit {s:.0%}": f"{v:.1%}" for s, v in r["losses"].items()},
+    "USD at 50%": f"{r['losses'][0.5] * size:,.0f}"} for r in table[:15]]), width="stretch")
+spec = stress.spectral(graph)
+gains = spec["gains"]
+cs = st.columns(2)
+cs[0].metric("Spectral radius ρ", f"{spec['rho']:.2f}", spec["phase"],
+             delta_color="inverse" if spec["rho"] >= 1 else "off",
+             help="Largest eigenvalue of the exposure matrix with liquidation-spiral gains on the "
+                  "diagonal. ρ ≥ 1: a shock feeds itself (supercritical).")
+cs[1].metric("Collaterals with a measured spiral", len(gains))
+if gains:
+    st.dataframe(pd.DataFrame([{"collateral": sp["asset"], "phase": sp["phase"],
+                                "loop gain g": "-" if sp["gain"] is None else f"{sp['gain']:.2f}",
+                                "forced sales at -5% (USD)": f"{sp['forced_usd']:,.0f}",
+                                "why": sp["rationale"]} for sp in gains.values()]), width="stretch")
+
 # --- 3. Decision ----------------------------------------------------------
 st.subheader("3. Decision")
 est_cost, cost_source = position_exit_cost(pos, graph)
@@ -216,4 +242,14 @@ c[4].metric("Breakeven p*", "-" if verdict.breakeven_probability is None
 (st.error if verdict.decision == "EXIT" else st.success)(verdict.reason)
 if "stuck" in cost_source:
     st.warning(cost_source)
+rule = exit_rule(graph, exit_cost)
+if rule:
+    st.markdown("**Exit trigger** (optimal stopping: exit before utilization freezes withdrawals)")
+    d = st.columns(4)
+    d[0].metric("Utilization now", f"{rule['utilization']:.1%}")
+    d[1].metric("Exit threshold u*", f"{rule['u_star']:.1%}")
+    d[2].metric("Haircut if trapped", f"{rule['haircut']:.1%}")
+    d[3].metric("Freeze hazard", f"{rule['hazard_per_year']:.2f}/yr")
+    (st.error if rule["triggered"] else st.success)(
+        ("EXIT trigger crossed: " if rule["triggered"] else "Below the exit trigger: ") + rule["rationale"])
 st.caption("Rates and severities: DATA rows are calibrated on DeFiLlama hacks and stablecoin history (data/calibration.json); JUDGEMENT rows are expert estimates.")

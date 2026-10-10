@@ -111,7 +111,8 @@ def _add_reserve(nodes, edges, reserve: str, market: dict, r: dict, index: dict,
         "reserve": reserve, "market": market["lendingMarket"], "supply_usd": supply,
         "borrow_usd": borrow, "liquidity_usd": supply - borrow, "utilization": util,
         "pool_project": "kamino",
-        "collateral_usd_by_asset": {f"asset:{c['liquidityToken']}": _f(c["totalSupplyUsd"]) for c in colls}}))
+        "collateral_usd_by_asset": {f"asset:{c['liquidityToken']}": _f(c["totalSupplyUsd"]) for c in colls},
+        "lltv_by_asset": {f"asset:{c['liquidityToken']}": _f(c["maxLtv"]) for c in colls}}))
     edges.append(Edge(parent, lend_id, kind, round(share, 3),
                       f"Reserve {explorer(CID, reserve)} in {market['name']}: {murl}"))
     edges.append(Edge(lend_id, proto_id, "runs_on", 1.0, murl))

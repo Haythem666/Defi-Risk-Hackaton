@@ -6,6 +6,7 @@ import networkx as nx
 import numpy as np
 
 from src.risk.assumptions import params_for
+from src.risk.stress import loop_gains, position_loss
 from src.schemas import DependencyGraph, RiskResult, Scenario
 
 
@@ -45,7 +46,12 @@ def horizon_probability(annual_rate: float, horizon_days: int) -> float:
 
 
 def build_scenarios(g: DependencyGraph, horizon_days: int) -> list[Scenario]:
+    """One scenario per incident on each node the position depends on. Its
+    loss if hit comes from the stress engine (risk/stress.py): the incident's
+    severity at that node, spread through the graph with the lending and
+    liquidation-spiral mechanics, not just severity x exposure."""
     G = to_networkx(g)
+    gains = loop_gains(g)
     out = []
     for n in g.nodes:
         if n.id == g.position_id:
@@ -54,11 +60,13 @@ def build_scenarios(g: DependencyGraph, horizon_days: int) -> list[Scenario]:
         if exp == 0:
             continue
         for a in params_for(n):
+            loss = position_loss(g, n.id, a["severity"], gains)
             out.append(Scenario(
                 node_id=n.id, incident=a["incident"],
                 probability=horizon_probability(a["annual_p"], horizon_days),
-                loss_if_hit=a["severity"] * exp,
-                rationale=f"{a['rationale']} Exposure along graph = {exp:.2f}."))
+                loss_if_hit=loss,
+                rationale=(f"{a['rationale']} Stress engine: a {a['severity']:.0%} hit here costs "
+                           f"the position {loss:.2%} (linear exposure along the graph {exp:.2f}).")))
     return out
 
 
