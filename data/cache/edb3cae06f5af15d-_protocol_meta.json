@@ -1,0 +1,1 @@
+{"fetched_at": 1791671889.574027, "url": "https://api.llama.fi/protocol/strata-markets", "params": null, "body": null, "data": {"name": "Strata Markets", "category": "Yield", "audits": "2", "audit_links": ["https://docs.strata.markets/technical-documentation/audits"], "parentProtocol": "parent#strata", "hacks": [], "chains": ["Ethereum"]}}

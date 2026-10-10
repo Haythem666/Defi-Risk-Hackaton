@@ -16,7 +16,7 @@ from src.graph.common import CHAINS, EVM_CHAINS
 from src.decision.snell import exit_rule, position_yield
 from src.risk import stress
 from src.risk.model import build_scenarios, simulate
-from src.schemas import Position
+from src.schemas import Position, Scenario
 
 COLORS = {"position": "#f4a261", "chain": "#8ecae6", "protocol": "#90be6d",
           "asset": "#ffd166", "issuer": "#f28482", "oracle": "#cdb4db",
@@ -181,8 +181,6 @@ if oracles:
 # --- 2. Risk --------------------------------------------------------------
 st.subheader("2. Incident scenarios over the horizon")
 scenarios = build_scenarios(graph, horizon)
-
-risk = simulate(scenarios)
 st.dataframe(pd.DataFrame([{
     "node": by_id[s.node_id].name, "incident": s.incident,
     "probability": f"{s.probability:.2%}", "loss if hit": f"{s.loss_if_hit:.1%}",
@@ -203,8 +201,19 @@ hit = w[1].slider("It loses (% of its value)", 0, 100, 20, step=5,
                   help="5% = a token trading 5% below its usual price, or 5% of a protocol's "
                        "funds stolen; 100% = it goes to zero.")
 lost = stress.position_loss(graph, names[what], hit / 100)
+chance = w[1].slider("Chance it happens within the horizon (%)", 0, 100, 0, step=5,
+                     help="0 = only look. Above 0, this hit is added to the incident scenarios, so "
+                          "the expected loss and the verdict below take it into account.")
 st.metric(f"Your position loses if {what} loses {hit}%", f"{lost:.1%}",
           f"{lost * size:,.0f} USD", delta_color="inverse")
+if chance:
+    scenarios = scenarios + [Scenario(
+        node_id=names[what], incident="what_if", probability=chance / 100, loss_if_hit=lost,
+        rationale=f"WHAT IF (set in the app): {what} loses {hit}%, {chance}% chance within the horizon; "
+                  f"stress engine: the position loses {lost:.1%}.")]
+    st.info(f"Added to the decision: {chance}% chance that {what} loses {hit}% "
+            f"(your position would lose {lost:.1%}). See the verdict below.")
+risk = simulate(scenarios)
 st.markdown("**Every dependency at once**: the same question for each of them, at 5%, 20%, 50% and 100%.")
 table = stress.stress_table(graph)
 st.dataframe(pd.DataFrame([{
