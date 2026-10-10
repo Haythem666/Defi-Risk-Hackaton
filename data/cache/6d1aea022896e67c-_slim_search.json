@@ -1,0 +1,1 @@
+{"fetched_at": 1791656447.0996504, "url": "https://api.coingecko.com/api/v3/search", "params": {"query": "Tether Gold"}, "body": null, "data": [{"id": "tether-gold", "name": "Tether Gold", "symbol": "XAUT"}, {"id": "tether-gold-tokens", "name": "Tether Gold Tokens", "symbol": "XAUT0"}]}

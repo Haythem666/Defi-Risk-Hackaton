@@ -26,7 +26,7 @@ CALLS: list[dict] = []
 def _api(url: str) -> str:
     host = re.sub(r"^https?://", "", url).split("/")[0]
     for name in ("morpho", "pendle", "aave", "llama", "ethena", "hyperliquid", "sourcify",
-                 "blockscout"):
+                 "blockscout", "kyberswap", "coingecko"):
         if name in host:
             return {"llama": "defillama"}.get(name, name)
     return "rpc" if "rpc" in host or "publicnode" in host else host
