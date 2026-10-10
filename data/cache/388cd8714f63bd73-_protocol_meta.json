@@ -1,0 +1,1 @@
+{"fetched_at": 1791661082.3750138, "url": "https://api.llama.fi/protocol/kamino-lend", "params": null, "body": null, "data": {"name": "Kamino Lend", "category": "Lending", "audits": "2", "audit_links": ["https://kamino.com/security#security-audits"], "parentProtocol": "parent#kamino-finance", "hacks": [], "chains": ["Solana"]}}

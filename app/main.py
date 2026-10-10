@@ -9,11 +9,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 import streamlit as st
 
-from src.data import aave, cache, hyperliquid, morpho, pendle
+from src.data import aave, cache, hyperliquid, kamino, morpho, pendle
 from src.decision.exit_cost import exit_cost as position_exit_cost
 from src.decision.rule import decide
 from src.graph.build import build_graph
-from src.graph.common import CHAINS
+from src.graph.common import CHAINS, EVM_CHAINS
 from src.risk.model import build_scenarios, simulate
 from src.schemas import Position
 
@@ -45,12 +45,14 @@ with st.sidebar:
     kinds = {"Pendle PT": "pendle_pt", "Lend on Morpho": "morpho_supply",
              "Supply to Aave": "aave_supply", "Morpho vault": "morpho_vault",
              "Hyperliquid vault (perps)": "hyperliquid_vault",
-             "Any contract (on-chain crawler)": "contract"}
+             "Any contract (on-chain crawler)": "contract",
+             "Kamino vault or reserve (Solana)": "kamino"}
     kind = kinds[st.radio("Pocket type", list(kinds))]
     # Only offer chains where this pocket type exists.
-    supported = {"pendle_pt": list(CHAINS), "morpho_supply": list(morpho.NETWORKS),
+    supported = {"pendle_pt": EVM_CHAINS, "morpho_supply": list(morpho.NETWORKS),
                  "aave_supply": list(aave.CHAIN_IDS), "morpho_vault": list(morpho.NETWORKS),
-                 "hyperliquid_vault": [999], "contract": list(CHAINS)}[kind]
+                 "hyperliquid_vault": [999], "contract": EVM_CHAINS,
+                 "kamino": [kamino.CHAIN_ID]}[kind]
     chain_id = st.selectbox("Chain", supported, format_func=lambda c: CHAINS[c])
     asset_address = None
     if kind == "pendle_pt":
@@ -73,6 +75,15 @@ with st.sidebar:
         address = labels[st.selectbox("Morpho vault (v1 and V2, largest listed)", list(labels))]
         typed = st.text_input("...or paste any Morpho vault address (v1 or V2)",
                               help="E.g. Belem RWA EURCV: 0xD6d4b804014EF27836dBe9f8f6Bf6c71251548Ec").strip()
+        address = typed or address
+    elif kind == "kamino":
+        names = {f"{v['name']} ({v['address'][:6]}…)": v["address"] for v in kamino.vaults()}
+        default = next((i for i, a in enumerate(names.values())
+                        if a == "DWSXb18xZApz29vnQpgR2m6MynCT7PznaXt7Ut7M7KaP"), 0)
+        address = names[st.selectbox("Kamino Earn vault", list(names), index=default)]
+        typed = st.text_input("...or paste a Kamino vault or reserve address",
+                              help="Belem's RWA USDC vault: DWSXb18xZApz29vnQpgR2m6MynCT7PznaXt7Ut7M7KaP; "
+                                   "a reserve, e.g. Huma PST: DzgYbR8HFQKf8YLCJ6M3E6ricB1xWAiNGZ2TB7X2KDHz").strip()
         address = typed or address
     elif kind == "contract":
         address = st.text_input(

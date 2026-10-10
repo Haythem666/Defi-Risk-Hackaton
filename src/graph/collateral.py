@@ -320,11 +320,14 @@ def add_contagion(nodes: list[Node], edges: list[Edge]) -> None:
     except Exception:
         return
     for asset in [n for n in nodes if n.type == "asset" and n.meta.get("posted_as_collateral")]:
-        own = {}  # collateral of this token already in the graph, per chain (Morpho markets)
+        own = {}  # collateral of this token already in the graph, per (protocol, chain)
         for e in edges:
             if e.kind == "secured_by" and e.target == asset.id:
                 lend = next(n for n in nodes if n.id == e.source)
-                own[lend.chain] = own.get(lend.chain, 0) + (lend.meta.get("collateral_usd") or 0)
+                usd = (lend.meta.get("collateral_usd_by_asset") or {}).get(asset.id,
+                                                                         lend.meta.get("collateral_usd"))
+                key = (lend.meta.get("pool_project", "morpho"), lend.chain)
+                own[key] = own.get(key, 0) + (usd or 0)
         by_lender: dict[tuple, dict] = {}
         for r in asset.meta["posted_as_collateral"]:
             if category.get(r["project"]) not in LENDING_CATEGORIES:
@@ -333,9 +336,9 @@ def add_contagion(nodes: list[Node], edges: list[Edge]) -> None:
             row = by_lender.setdefault(key, {"usd": 0.0, "urls": []})
             row["usd"] += r["tvl_usd"] or 0
             row["urls"].append(r["url"])
-        for (project, ch), row in by_lender.items():
-            if project.startswith("morpho"):  # minus the markets already drawn
-                row["usd"] = max(0.0, row["usd"] - own.get(ch, 0))
+        for (project, ch), row in by_lender.items():  # minus the markets already drawn
+            drawn = sum(usd for (p, c), usd in own.items() if c == ch and project.startswith(p))
+            row["usd"] = max(0.0, row["usd"] - drawn)
         dex = asset.meta.get("dex_pools_usd") or 0.0
         exit_node = next((n for n in nodes if n.id == f"market:dex-exit-{asset.name}"), None)
         no_market = exit_node is not None and exit_node.meta.get("has_market") is False
