@@ -1,0 +1,1 @@
+{"fetched_at": 1791674870.8032587, "url": "https://api.llama.fi/protocol/dfdv-staked-sol", "params": null, "body": null, "data": {"name": "DFDV Staked SOL", "category": "Liquid Staking", "audits": "0", "audit_links": null, "parentProtocol": null, "hacks": [], "chains": ["Solana"]}}
