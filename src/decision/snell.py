@@ -49,8 +49,10 @@ def position_utilization(g: DependencyGraph) -> float | None:
 
 
 def position_yield(g: DependencyGraph) -> float:
+    """Annual yield of the position: the vault's net APY, the lending APY, or
+    a PT's implied APY (DEFAULT_YIELD if none is published)."""
     for n in [g.node(g.position_id)] + [n for n in g.nodes if n.type == "vault"]:
-        r = n.meta.get("net_apy") or n.meta.get("supply_apy")
+        r = n.meta.get("net_apy") or n.meta.get("supply_apy") or n.meta.get("implied_apy")
         if r:
             return float(r)
     return DEFAULT_YIELD
