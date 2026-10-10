@@ -9,7 +9,7 @@ risk is getting stuck: a lender can only withdraw the pool's idle liquidity.
 """
 
 from src.data import aave, morpho
-from src.graph.collateral import add_collateral_depth, add_liquidation_exit
+from src.graph.collateral import add_collateral_depth, add_contagion, add_liquidation_exit
 from src.graph.common import (MIN_COLLATERAL_USD, add_asset, add_chain, add_node, add_oracle,
                               add_protocol, chain_name, explorer, morpho_oracle_usd)
 from src.schemas import DependencyGraph, Edge, Node, Position
@@ -73,6 +73,7 @@ def build_morpho_supply(pos: Position) -> DependencyGraph:
     edges.append(Edge(pos_id, loan_id, "denominated_in", 1.0,
                       f"The position is a claim on {loan['symbol']}: {url}"))
     _add_morpho_market(nodes, edges, cid, m, pos_id, 1.0, "supplied_to")
+    add_contagion(nodes, edges)
     return DependencyGraph(position_id=pos_id, nodes=nodes, edges=edges)
 
 
@@ -127,6 +128,7 @@ def build_morpho_vault(pos: Position) -> DependencyGraph:
     edges.append(Edge(pos_id, vault_id, "deposited_in", 1.0, url))
     edges.append(Edge(vault_id, proto_id, "runs_on", 1.0, url))
     _add_v1_allocations(nodes, edges, cid, vault_id, v)
+    add_contagion(nodes, edges)
     return DependencyGraph(position_id=pos_id, nodes=nodes, edges=edges)
 
 
@@ -233,6 +235,7 @@ def build_morpho_vault_v2(pos: Position) -> DependencyGraph:
     edges.append(Edge(pos_id, asset_id, "denominated_in", 1.0,
                       f"Vault shares are a claim on {asset['symbol']}: {url}"))
     _add_v2_vault(nodes, edges, cid, v, pos_id, 1.0, "deposited_in")
+    add_contagion(nodes, edges)
     return DependencyGraph(position_id=pos_id, nodes=nodes, edges=edges)
 
 
@@ -294,4 +297,5 @@ def build_aave_supply(pos: Position) -> DependencyGraph:
                        float(r["usdExchangeRate"] or 0) or None, None,
                        f"Aave oracle for {ct['symbol']}", exposure=util * share)
 
+    add_contagion(nodes, edges)
     return DependencyGraph(position_id=pos_id, nodes=nodes, edges=edges)

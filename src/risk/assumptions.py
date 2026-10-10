@@ -41,6 +41,11 @@ JUDGEMENT = {
                                       "debt (rate as a Pendle pool crunch, severity as a lending "
                                       "cascade); the edge exposure already scales it by the "
                                       "measured price impact vs the liquidation bonus."},
+    "contagion": {"incident": "liquidity_crunch", "annual_p": 0.05, "severity": 0.10,
+                  "rationale": "JUDGEMENT: a liquidation wave at another lender holding the same "
+                               "collateral dumps it into the same DEX pools (rate and severity as a "
+                               "lending cascade); the edge exposure carries their forced sales "
+                               "over the token's DEX liquidity."},
     "asset_non_usd": {"incident": "depeg", "annual_p": 0.03, "severity": 0.05,
                       "rationale": "JUDGEMENT: liquid staking tokens vs their base asset; stETH "
                                    "traded about 5% below ETH in June 2022."},
@@ -119,6 +124,8 @@ def params_for(node: Node) -> list[dict]:
         return []
     if meta.get("role") == "offchain_backing":  # its risk is the issuer's rate, not counted twice
         return []
+    if meta.get("role") == "contagion":
+        return [JUDGEMENT["contagion"]]
     if t == "market" and meta.get("role") == "liquidation_exit":
         return [JUDGEMENT["liquidation_exit"]]
     if t in JUDGEMENT:

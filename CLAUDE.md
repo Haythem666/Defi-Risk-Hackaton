@@ -23,14 +23,17 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - `src/schemas.py`: shared data contract (Position, Node, Edge, DependencyGraph, Scenario, RiskResult, Verdict). Do not change silently.
 - `src/data/`: fetchers for real data (one file per source): `pendle.py`, `defillama.py`, `morpho.py`,
   `aave.py`, `ethena.py` (where USDe backing sits), `hyperliquid.py` (perp vaults),
-  `chain.py` (public RPC reads + Sourcify), `kyberswap.py` (DEX sell quotes),
+  `chain.py` (public RPC reads + Sourcify), `kyberswap.py` (DEX sell quotes), `kamino.py` (Solana
+  lending: Earn vaults, markets, reserves),
   `coingecko.py` (a token's website, to find its issuer).
   All HTTP goes through `cache.fetch_json`, which saves every response to `data/cache/` (committed;
   bulky calibration inputs go to `data/raw/`, not committed)
   and falls back to it when the API is down. `DEFI_OFFLINE=1` forces cache only.
 - `src/graph/`: builds a DependencyGraph for a position. `build.py` dispatches on `Position.kind`:
   `pendle_pt.py` (5 layers from live APIs), `lending.py` (Morpho market / Aave pool supply /
-  Morpho vault), `perp_vault.py` (Hyperliquid vault: venue, bridge, oracle, positions).
+  Morpho vault), `perp_vault.py` (Hyperliquid vault: venue, bridge, oracle, positions),
+  `kamino.py` (Kamino Earn vault or reserve on Solana: reserves, the market's collaterals weighted
+  like an Aave pool, issuers, contagion; no oracle or program-authority reads on Solana).
   `common.py` holds shared helpers (chains, explorer links, issuer discovery, oracle checks,
   the feeds behind a Morpho oracle). `collateral.py` looks behind each lending collateral: issuer,
   bridge (Chainlink CCIP, LayerZero OFT) and home chain, who controls the token, other lenders
@@ -38,8 +41,16 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - `src/risk/`: `calibration.py` (builds `data/calibration.json` from DeFiLlama hacks, protocol TVL
   history and stablecoin prices: `python -m src.risk.calibration`), `assumptions.py` (picks the rate
   and severity for each node: DATA rows from the calibration, JUDGEMENT rows labelled as such),
-  `model.py` (scenarios, propagation, Poisson horizon probability, Monte Carlo -> RiskResult).
-- `src/decision/`: `exit_cost.py` (live Pendle router quote; pool liquidity for loans) + `rule.py` (STAY/EXIT -> Verdict).
+  `model.py` (scenarios, propagation, Poisson horizon probability, Monte Carlo -> RiskResult),
+  `stress.py` (stress engine: each node hit at 5/20/50/100%, losses spread by capped DebtRank
+  fixed-point propagation; value edges add up, shared dependencies count once (max); a lender loses
+  only beyond the LLTV buffer, recovering the collateral at its DEX exit price; liquidation-spiral
+  loop gain g per collateral, stalled when liquidations do not pay; spectral radius of the exposure
+  matrix with spiral gains on the diagonal). Scenario losses come from this engine.
+- `src/decision/`: `exit_cost.py` (live Pendle router quote; pool liquidity for loans) + `rule.py` (STAY/EXIT -> Verdict)
+  + `snell.py` (optimal-stopping exit trigger for lending positions: exit when utilization > u* =
+  1 - (KAPPA (H - C) / r)^(1/GAMMA), H = stress-engine haircut if trapped; KAPPA/GAMMA JUDGEMENT,
+  anchored on a 0.2/yr freeze hazard at the 90% target utilization).
 - `app/`: Streamlit app (`streamlit run app/main.py`).
 - `data/examples/`: hand-made example graphs and past incidents.
 - `tests/`: pytest.
@@ -83,10 +94,13 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
   API (PT-reUSD -> reUSD), a vault share via ERC-4626 asset() (siUSD -> iUSD; a Morpho vault share
   also brings its markets). An issuer whose DeFiLlama category means off-chain assets (RWA, RWA
   Lending, Basis Trading, CeDeFi, Off-Chain Credit) gets an "Off-chain backing" box: where the graph stops.
+- Contagion: other lending protocols (DeFiLlama category Lending/CDP) holding the same collateral,
+  here and where it is bridged from, are nodes; exposure = 5% of their holding liquidated over the
+  token's DEX liquidity (1 if it has no market); markets already in the graph are subtracted.
 - Issuer depth: Ethena -> exchange venues (Binance, OKX, ...) from Ethena's transparency API,
   exposure = venue share of backing. Protocol/issuer nodes carry DeFiLlama category, audits and
   past hacks (input for calibrating the risk model).
-- Known gaps: Euler not covered (no keyless API), venues only for Ethena, Aave PT exposure still crude (share of PT TVL), exit cost ignores forgone yield and crisis
+- Known gaps: Kamino oracles and Solana program authorities not read; Euler not covered (no keyless API), venues only for Ethena, Aave PT exposure still crude (share of PT TVL), exit cost ignores forgone yield and crisis
   liquidity, no portfolio view yet.
 
 ## Commands

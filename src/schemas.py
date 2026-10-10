@@ -25,6 +25,7 @@ PositionKind = Literal[
     "morpho_vault",   # depositing in a Morpho vault (curated allocation to markets)
     "hyperliquid_vault",  # depositing in a vault trading on the Hyperliquid perp exchange
     "contract",       # any token or vault address: dependencies read on-chain by the crawler
+    "kamino",         # a Kamino (Solana) Earn vault, or supplying to one Kamino reserve
 ]
 
 IncidentType = Literal[

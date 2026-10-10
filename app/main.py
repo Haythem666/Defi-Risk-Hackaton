@@ -9,11 +9,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 import streamlit as st
 
-from src.data import aave, cache, hyperliquid, morpho, pendle
+from src.data import aave, cache, hyperliquid, kamino, morpho, pendle
 from src.decision.exit_cost import exit_cost as position_exit_cost
 from src.decision.rule import decide
 from src.graph.build import build_graph
-from src.graph.common import CHAINS
+from src.graph.common import CHAINS, EVM_CHAINS
+from src.decision.snell import exit_rule
+from src.risk import stress
 from src.risk.model import build_scenarios, simulate
 from src.schemas import Position
 
@@ -45,12 +47,14 @@ with st.sidebar:
     kinds = {"Pendle PT": "pendle_pt", "Lend on Morpho": "morpho_supply",
              "Supply to Aave": "aave_supply", "Morpho vault": "morpho_vault",
              "Hyperliquid vault (perps)": "hyperliquid_vault",
-             "Any contract (on-chain crawler)": "contract"}
+             "Any contract (on-chain crawler)": "contract",
+             "Kamino vault or reserve (Solana)": "kamino"}
     kind = kinds[st.radio("Pocket type", list(kinds))]
     # Only offer chains where this pocket type exists.
-    supported = {"pendle_pt": list(CHAINS), "morpho_supply": list(morpho.NETWORKS),
+    supported = {"pendle_pt": EVM_CHAINS, "morpho_supply": list(morpho.NETWORKS),
                  "aave_supply": list(aave.CHAIN_IDS), "morpho_vault": list(morpho.NETWORKS),
-                 "hyperliquid_vault": [999], "contract": list(CHAINS)}[kind]
+                 "hyperliquid_vault": [999], "contract": EVM_CHAINS,
+                 "kamino": [kamino.CHAIN_ID]}[kind]
     chain_id = st.selectbox("Chain", supported, format_func=lambda c: CHAINS[c])
     asset_address = None
     if kind == "pendle_pt":
@@ -73,6 +77,15 @@ with st.sidebar:
         address = labels[st.selectbox("Morpho vault (v1 and V2, largest listed)", list(labels))]
         typed = st.text_input("...or paste any Morpho vault address (v1 or V2)",
                               help="E.g. Belem RWA EURCV: 0xD6d4b804014EF27836dBe9f8f6Bf6c71251548Ec").strip()
+        address = typed or address
+    elif kind == "kamino":
+        names = {f"{v['name']} ({v['address'][:6]}…)": v["address"] for v in kamino.vaults()}
+        default = next((i for i, a in enumerate(names.values())
+                        if a == "DWSXb18xZApz29vnQpgR2m6MynCT7PznaXt7Ut7M7KaP"), 0)
+        address = names[st.selectbox("Kamino Earn vault", list(names), index=default)]
+        typed = st.text_input("...or paste a Kamino vault or reserve address",
+                              help="Belem's RWA USDC vault: DWSXb18xZApz29vnQpgR2m6MynCT7PznaXt7Ut7M7KaP; "
+                                   "a reserve, e.g. Huma PST: DzgYbR8HFQKf8YLCJ6M3E6ricB1xWAiNGZ2TB7X2KDHz").strip()
         address = typed or address
     elif kind == "contract":
         address = st.text_input(
@@ -185,6 +198,30 @@ st.dataframe(pd.DataFrame([{
     "expected": f"{s.probability * s.loss_if_hit:.3%}", "rationale": s.rationale}
     for s in scenarios]), width="stretch")
 
+# --- Stress engine ----------------------------------------------------------
+st.subheader("Stress engine: what each failure costs this position")
+st.caption("Each dependency is hit alone at 5%, 20%, 50% and 100%; the loss spreads through the graph "
+           "(capped DebtRank propagation: value slices add up, shared dependencies count once, lenders "
+           "lose only beyond the borrowers' LLTV buffer, recovering the collateral at its DEX exit price).")
+table = stress.stress_table(graph)
+st.dataframe(pd.DataFrame([{
+    "dependency": r["name"], "type": r["type"],
+    **{f"hit {s:.0%}": f"{v:.1%}" for s, v in r["losses"].items()},
+    "USD at 50%": f"{r['losses'][0.5] * size:,.0f}"} for r in table[:15]]), width="stretch")
+spec = stress.spectral(graph)
+gains = spec["gains"]
+cs = st.columns(2)
+cs[0].metric("Spectral radius ρ", f"{spec['rho']:.2f}", spec["phase"],
+             delta_color="inverse" if spec["rho"] >= 1 else "off",
+             help="Largest eigenvalue of the exposure matrix with liquidation-spiral gains on the "
+                  "diagonal. ρ ≥ 1: a shock feeds itself (supercritical).")
+cs[1].metric("Collaterals with a measured spiral", len(gains))
+if gains:
+    st.dataframe(pd.DataFrame([{"collateral": sp["asset"], "phase": sp["phase"],
+                                "loop gain g": "-" if sp["gain"] is None else f"{sp['gain']:.2f}",
+                                "forced sales at -5% (USD)": f"{sp['forced_usd']:,.0f}",
+                                "why": sp["rationale"]} for sp in gains.values()]), width="stretch")
+
 # --- 3. Decision ----------------------------------------------------------
 st.subheader("3. Decision")
 est_cost, cost_source = position_exit_cost(pos, graph)
@@ -205,4 +242,14 @@ c[4].metric("Breakeven p*", "-" if verdict.breakeven_probability is None
 (st.error if verdict.decision == "EXIT" else st.success)(verdict.reason)
 if "stuck" in cost_source:
     st.warning(cost_source)
+rule = exit_rule(graph, exit_cost)
+if rule:
+    st.markdown("**Exit trigger** (optimal stopping: exit before utilization freezes withdrawals)")
+    d = st.columns(4)
+    d[0].metric("Utilization now", f"{rule['utilization']:.1%}")
+    d[1].metric("Exit threshold u*", f"{rule['u_star']:.1%}")
+    d[2].metric("Haircut if trapped", f"{rule['haircut']:.1%}")
+    d[3].metric("Freeze hazard", f"{rule['hazard_per_year']:.2f}/yr")
+    (st.error if rule["triggered"] else st.success)(
+        ("EXIT trigger crossed: " if rule["triggered"] else "Below the exit trigger: ") + rule["rationale"])
 st.caption("Rates and severities: DATA rows are calibrated on DeFiLlama hacks and stablecoin history (data/calibration.json); JUDGEMENT rows are expert estimates.")
