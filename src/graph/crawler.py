@@ -122,7 +122,7 @@ def _probe(cid: int, a: str) -> dict:
     return out
 
 
-def _controller(cid: int, a: str, hops: int = 2) -> dict:
+def controller(cid: int, a: str, hops: int = 2) -> dict:
     """What kind of thing controls a contract: one wallet (EOA), a Safe
     multisig, a timelock, or a contract owned by one of those."""
     calls = [("eth_getCode", [a, "latest"])]
@@ -142,12 +142,12 @@ def _controller(cid: int, a: str, hops: int = 2) -> dict:
                 "label": f"Timelock {d / 86400:.1f}d {_short(a)}"}
     o = _addr((_words(owner) or [None])[0])
     if o and hops > 0 and o != a:  # e.g. a ProxyAdmin: what matters is who owns it
-        inner = _controller(cid, o, hops - 1)
+        inner = controller(cid, o, hops - 1)
         return {**inner, "via": a, "label": f"{inner['label']} via {_short(a)}"}
     return {**c, "kind": "contract", "label": f"Contract {_short(a)}"}
 
 
-def _control_flags(role: str, ctrl: dict) -> list[str]:
+def control_flags(role: str, ctrl: dict) -> list[str]:
     if ctrl["kind"] == "EOA":
         return [f"{role} is a single wallet: one stolen key controls it"]
     if ctrl["kind"] == "Safe" and ctrl["threshold"] <= 2:
@@ -269,9 +269,9 @@ def crawl(cid: int, root: str) -> tuple[dict, list, dict]:
             if not who:
                 continue
             if who not in controllers:
-                controllers[who] = _controller(cid, who)
+                controllers[who] = controller(cid, who)
             c["controllers"][role] = who
-            c["flags"] += _control_flags(role, controllers[who])
+            c["flags"] += control_flags(role, controllers[who])
 
         # A Morpho vault: unroll its markets with the share of the vault in each.
         morpho = _addr((_words(p.get("MORPHO")) or [None])[0])

@@ -1,0 +1,1 @@
+{"fetched_at": 1791643813.558373, "url": "https://base-rpc.publicnode.com", "params": null, "body": {"jsonrpc": "2.0", "id": 1, "method": "eth_call", "params": [{"to": "0xb40d93F44411D8C09aD17d7F88195eF9b05cCD96", "data": "0xa035b1fe"}, "latest"]}, "data": {"jsonrpc": "2.0", "id": 1, "result": "0x0000000000000000000000000000000000000000093f1aa36f47aaa127f888f6"}}

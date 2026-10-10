@@ -1,0 +1,1 @@
+{"fetched_at": 1791643805.2450013, "url": "https://api.llama.fi/protocol/concentrator", "params": null, "body": null, "data": {"name": "Concentrator", "category": "Yield", "audits": "2", "audit_links": ["https://aladdin.club/audits/AladdinDao_V3_Report_Secbit.pdf"], "parentProtocol": null, "hacks": [], "chains": ["Ethereum"]}}

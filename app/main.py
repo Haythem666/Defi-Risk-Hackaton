@@ -50,9 +50,16 @@ with st.sidebar:
                   for m in morpho.listed_markets(chain_id)}
         address = labels[st.selectbox("Morpho market (collateral / lent asset)", list(labels))]
     elif kind == "morpho_vault":
-        labels = {f"{v['name']} · {v['asset']['symbol']} ({v['state']['totalAssetsUsd'] / 1e6:,.0f}M)":
-                  v["address"] for v in morpho.listed_vaults(chain_id)}
-        address = labels[st.selectbox("Morpho vault", list(labels))]
+        vaults = [(v["name"], v["asset"]["symbol"], v["state"]["totalAssetsUsd"] or 0, v["address"], "")
+                  for v in morpho.listed_vaults(chain_id)]
+        vaults += [(v["name"], v["asset"]["symbol"], v["totalAssetsUsd"] or 0, v["address"], " · V2")
+                   for v in morpho.listed_vaults_v2(chain_id)]
+        labels = {f"{n} · {s} ({t / 1e6:,.0f}M){ver}": a
+                  for n, s, t, a, ver in sorted(vaults, key=lambda x: -x[2])}
+        address = labels[st.selectbox("Morpho vault (v1 and V2, largest listed)", list(labels))]
+        typed = st.text_input("...or paste any Morpho vault address (v1 or V2)",
+                              help="E.g. Belem RWA EURCV: 0xD6d4b804014EF27836dBe9f8f6Bf6c71251548Ec").strip()
+        address = typed or address
     elif kind == "contract":
         address = st.text_input(
             "Token or vault address", "0x9D39A5DE30e57443BfF2A8307A4256c8797A3497" if chain_id == 1 else "",

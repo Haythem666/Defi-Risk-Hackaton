@@ -52,7 +52,9 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - End-to-end slice works on six chains (Ethereum, Arbitrum, Base, BSC, HyperEVM, Plasma; each
   protocol only where its API covers the chain) for five pocket types: any live Pendle PT (reference:
   PT-sUSDe 26NOV2026, `0x47ad2cd1dd15739a7a035b9d3b7828d916fef77e`), lending in a listed Morpho
-  market, supplying to an Aave v3 pool, depositing in a Morpho vault, and depositing in a
+  market, supplying to an Aave v3 pool, depositing in a Morpho vault (v1, or Vault V2 via its adapters,
+  e.g. Belem RWA EURCV `0xD6d4b804014EF27836dBe9f8f6Bf6c71251548Ec`; owner/curator classified on-chain,
+  per-setting timelocks with a flag when routing changes have none), and depositing in a
   Hyperliquid vault that trades perps (the brief's "vault deploying into an external venue"). A lender's exposure
   to collateral = pool utilization; a vault's exposure to a market = its share of the vault.
   A PT's exposure to a Morpho market = PT liquidated if its price drops 5% (Morpho
