@@ -75,7 +75,34 @@ def add_issuer(nodes: list[Node], edges: list[Edge], cid: int, asset_id: str,
                       f"{defillama.pool_url(issuer['pool'])}"))
     if new:
         add_issuer_venues(nodes, edges, cid, issuer_id, slug)
+        add_offchain_backing(nodes, edges, issuer_id, slug)
     return issuer_id
+
+
+# DeFiLlama categories whose assets sit off-chain: a custodian, a fund, real-world
+# loans or exchange accounts. The chain shows the token, not what backs it.
+OFFCHAIN_CATEGORIES = {"RWA", "RWA Lending", "Basis Trading", "CeDeFi", "Off-Chain Credit"}
+
+
+def add_offchain_backing(nodes: list[Node], edges: list[Edge], issuer_id: str, slug: str) -> None:
+    """Where the graph stops: an issuer whose backing is held off-chain gets a
+    box saying so. It carries no rate of its own (the issuer's does); it marks
+    the dependency nobody can verify on-chain. Skipped when the off-chain
+    venues are already listed (Ethena)."""
+    issuer = next(n for n in nodes if n.id == issuer_id)
+    category = issuer.meta.get("category")
+    if category not in OFFCHAIN_CATEGORIES or any(
+            e.source == issuer_id and e.kind == "hedges_on" for e in edges):
+        return
+    box_id = add_node(nodes, Node(f"venue:offchain-{slug}", "venue",
+                                  f"Off-chain backing of {issuer.name}", None,
+                                  {"role": "offchain_backing", "category": category,
+                                   "flags": [f"{issuer.name} ({category}) holds its backing "
+                                             f"off-chain: not verifiable on-chain"]}))
+    edges.append(Edge(issuer_id, box_id, "backed_off_chain", 1.0,
+                      f"DeFiLlama category '{category}' ({defillama.protocol_url(slug)}): the "
+                      f"assets behind the token are held off-chain (custodian, fund, real-world "
+                      f"loans or exchange accounts); the graph cannot follow them further"))
 
 
 def add_issuer_venues(nodes: list[Node], edges: list[Edge], cid: int, issuer_id: str,

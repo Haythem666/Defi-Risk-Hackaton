@@ -65,13 +65,15 @@ def _key(method: str, url: str, params: dict | None, body: dict | None) -> str:
 
 
 def fetch_json(url: str, params: dict | None = None, body: dict | None = None,
-               max_age_s: int = 3600, transform=None, cache_dir: Path | None = None):
+               max_age_s: int = 3600, transform=None, cache_dir: Path | None = None,
+               accept_status: tuple = ()):
     """GET (or POST if `body` is given) and return parsed JSON.
 
     Uses the cache if it is fresher than `max_age_s`, if DEFI_OFFLINE=1,
     or if the request fails. `transform` (optional) slims the response
     before it is cached, for large payloads. `cache_dir` overrides where
     the response is saved (bulky inputs that the demo does not need).
+    `accept_status` lists error codes whose body is a real answer (cached too).
     """
     method = "POST" if body is not None else "GET"
     key = _key(method, url, params, body)
@@ -89,7 +91,8 @@ def fetch_json(url: str, params: dict | None = None, body: dict | None = None,
 
     try:
         resp = requests.request(method, url, params=params, json=body, timeout=TIMEOUT_S)
-        resp.raise_for_status()
+        if resp.status_code not in accept_status:  # e.g. a 400 that means "no route"
+            resp.raise_for_status()
         data = resp.json()
         if transform is not None:
             data = transform(data)

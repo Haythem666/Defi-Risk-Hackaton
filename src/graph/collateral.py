@@ -13,8 +13,9 @@ for:
     liquidity).
 """
 
-from src.data import chain, coingecko, defillama, kyberswap, morpho
-from src.graph.common import _risk_meta, add_node, add_protocol, chain_name, explorer
+from src.data import chain, coingecko, defillama, kyberswap, morpho, pendle
+from src.graph.common import (_risk_meta, add_asset, add_node, add_offchain_backing, add_protocol,
+                              chain_name, explorer)
 from src.graph.crawler import BASE_ASSETS  # plain base assets: issuer and bridges well known
 from src.schemas import Edge, Node
 
@@ -37,10 +38,18 @@ GET_POOL, TYPE_AND_VERSION, SUPPORTED_CHAINS, REMOTE_TOKEN = (
 IMPL_SLOT = "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc"
 ADMIN_SLOT = "0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103"
 
+# Collateral that wraps another token (a PT, a vault share) is opened up to
+# this many levels: PT-reUSD -> reUSD -> ..., siUSD -> iUSD -> ...
+MAX_UNWRAP = 2
+_unwrap_depth = [0]  # current nesting, shared by the recursive calls below
+ASSET = "0x38d52e0f"  # ERC-4626 asset(): the token a vault share is a claim on
+SYMBOL = "0x95d89b41"
+
 # Liquidation stress: the collateral liquidated if its price falls this much
 # must be sold by liquidators (same shock as the PT graph uses).
 SHOCK = 0.05
 SPOT_USD = 10_000  # small sale: the token's price on DEXes
+NO_MARKET_IMPACT = 0.5  # a small sale losing half its value or more: no real market
 
 
 def add_collateral_depth(nodes: list[Node], edges: list[Edge], cid: int, asset_id: str,
@@ -60,6 +69,67 @@ def add_collateral_depth(nodes: list[Node], edges: list[Edge], cid: int, asset_i
     if not any(e.source == asset_id and e.kind == "issued_by" for e in edges):
         _add_issuer_from_website(nodes, edges, cid, asset, token.get("name"), symbol)
     _add_other_holders(asset, cid, address, remote)
+    if _unwrap_depth[0] < MAX_UNWRAP:
+        _unwrap_depth[0] += 1
+        try:
+            _unwrap(nodes, edges, cid, asset, symbol, address)
+        except Exception:
+            pass  # API or RPC down and nothing cached: the token stays a leaf
+        finally:
+            _unwrap_depth[0] -= 1
+
+
+# --- what the collateral is made of ------------------------------------------
+
+def _unwrap(nodes, edges, cid, asset: Node, symbol: str, address: str) -> None:
+    """Open a collateral that is a claim on another token: a Pendle PT
+    (redeems into its underlying at maturity) or a vault share (ERC-4626:
+    a claim on the vault's asset; a Morpho vault also lends it out)."""
+    if symbol.upper().startswith("PT-"):
+        _unwrap_pt(nodes, edges, cid, asset, address)
+        return
+    from src.graph.crawler import _addr, _string, _words
+    inner = _addr((_words(chain.eth_call(cid, address, ASSET)) or [None])[0])
+    if not inner or inner == address.lower():
+        return
+    from src.graph.lending import _add_v1_allocations, _add_v2_vault  # avoid a circular import
+    v1 = morpho.vault(cid, address) if cid in morpho.NETWORKS else None
+    v2 = None if v1 or cid not in morpho.NETWORKS else morpho.vault_v2(cid, address)
+    if v1:  # a Morpho vault share: its markets are what backs it
+        vault_id = add_node(nodes, Node(f"vault:{address.lower()}", "vault", v1["name"], chain_name(cid),
+                                        {"address": address, "version": 1,
+                                         "total_usd": v1["state"]["totalAssetsUsd"]}))
+        edges.append(Edge(asset.id, vault_id, "share_of", 1.0, morpho.vault_url(cid, address)))
+        _add_v1_allocations(nodes, edges, cid, vault_id, v1)
+    elif v2:
+        _add_v2_vault(nodes, edges, cid, v2, asset.id, 1.0, "share_of")
+    sym = _string(chain.eth_call(cid, inner, SYMBOL)) or inner[:10]
+    inner_id = add_asset(nodes, edges, cid, sym, inner)
+    asset.meta["wraps"] = inner_id  # its peg risk is the inner token's (risk/assumptions.py)
+    edges.append(Edge(asset.id, inner_id, "holds", 1.0,
+                      f"asset() on {explorer(cid, address)} returns {inner} ({sym}): the share "
+                      f"is a claim on {sym}"))
+    add_collateral_depth(nodes, edges, cid, inner_id, sym, inner)
+
+
+def _unwrap_pt(nodes, edges, cid, asset: Node, address: str) -> None:
+    """A Pendle PT: Pendle's API gives its market, and the token it redeems
+    into at maturity."""
+    m = next((m for m in pendle.active_markets(cid) if pendle._addr(m["pt"]) == address.lower()),
+             None)
+    if m is None:
+        return
+    url = f"https://app.pendle.finance/trade/markets/{m['address']}?chain={chain_name(cid).lower()}"
+    proto_id = add_protocol(nodes, edges, cid, "pendle-v2", "Pendle", url)
+    edges.append(Edge(asset.id, proto_id, "contracts_of", 1.0, f"Pendle PT, market {url}"))
+    underlying, sym = pendle._addr(m["underlyingAsset"]), m["name"]
+    inner_id = add_asset(nodes, edges, cid, sym, underlying)
+    asset.meta.update(wraps=inner_id, pendle_market=m["address"], pendle_sy=pendle._addr(m["sy"]),
+                      expiry=m["expiry"][:10])
+    edges.append(Edge(asset.id, inner_id, "redeems_into", 1.0,
+                      f"Pendle API: this PT redeems 1:1 into {sym} ({explorer(cid, underlying)}) "
+                      f"at expiry {m['expiry'][:10]}: {url}"))
+    add_collateral_depth(nodes, edges, cid, inner_id, sym, underlying)
 
 
 # --- on-chain reads ---------------------------------------------------------
@@ -196,12 +266,15 @@ def _add_issuer_from_website(nodes, edges, cid, asset: Node, name: str | None, s
     if not proto:
         return
     slug = proto["slug"]
+    new = all(n.id != f"issuer:{slug}" for n in nodes)
     issuer_id = add_node(nodes, Node(f"issuer:{slug}", "issuer", proto["name"], chain_name(cid),
                                      {**_risk_meta(slug), "website": coin["homepage"]}))
     edges.append(Edge(asset.id, issuer_id, "issued_by", 1.0,
                       f"CoinGecko lists {coin['homepage']} as the website of {name} "
                       f"({coingecko.coin_url(coin['id'])}); DeFiLlama protocol {slug} has the same "
                       f"website ({defillama.protocol_url(slug)})"))
+    if new:
+        add_offchain_backing(nodes, edges, issuer_id, slug)
 
 
 def _add_other_holders(asset: Node, cid: int, address: str, remote: dict[str, str]) -> None:
@@ -239,32 +312,46 @@ def add_liquidation_exit(nodes: list[Node], edges: list[Edge], cid: int, lend_id
     p_loan = (loan.get("price") or {}).get("usd")
     if cid not in kyberswap.CHAINS or not p_coll or not p_loan or coll["symbol"].upper() in BASE_ASSETS:
         return
+    # A PT trades in its Pendle pool, which DEX aggregators do not route through.
+    pt = next((n.meta for n in nodes if n.type == "asset" and n.meta.get("pendle_market")
+               and n.meta.get("address", "").lower() == coll["address"].lower()), None)
     try:
         forced = morpho.liquidated_at(morpho.collateral_at_risk(cid, m["marketId"]), 1 - SHOCK)
-        quotes = {usd: _impact(cid, coll, loan, usd, p_coll, p_loan) for usd in (SPOT_USD, forced)
-                  if usd >= SPOT_USD}
+        spot = _impact(cid, coll, loan, SPOT_USD, p_coll, p_loan, pt)
+        impact = _impact(cid, coll, loan, forced, p_coll, p_loan, pt) if forced >= SPOT_USD else None
     except Exception:
         return
     lltv = int(m["lltv"]) / 1e18
     bonus = min(1.15, 1 / (0.3 * lltv + 0.7)) - 1  # Morpho liquidation incentive factor
-    impact = quotes.get(forced)
+    # No market at all: even a small sale finds no buyer, whatever the price drop.
+    no_market = spot >= NO_MARKET_IMPACT
     lend = next(n for n in nodes if n.id == lend_id)
     lend.meta.update(liquidated_at_shock_usd=forced, liquidation_bonus=bonus,
-                     liquidation_price_impact=impact)
-    exposure = util * min(1.0, impact / bonus) if impact is not None and bonus else 0.0
+                     liquidation_price_impact=impact, collateral_has_market=not no_market)
+    if no_market:
+        exposure = util
+    else:
+        exposure = util * min(1.0, impact / bonus) if impact is not None and bonus else 0.0
     if exposure < 0.01:  # nothing to liquidate, or DEXes absorb it well within the bonus
         return
-    url = kyberswap.route_url(cid, coll["address"], loan["address"])
+    url = (f"Pendle router quote, market {pt['pendle_market']}" if pt
+           else kyberswap.route_url(cid, coll["address"], loan["address"]))
+    venue = "its Pendle pool" if pt else "the best KyberSwap route"
     exit_id = f"market:dex-exit-{coll['symbol']}"
-    spot = quotes.get(SPOT_USD)
     meta = {"role": "liquidation_exit", "token": coll["address"], "sell_to": loan["symbol"],
-            "dex_price_usd": (1 - spot) * p_coll if spot is not None else None,
-            "flags": []}
+            "dex_price_usd": None if no_market else (1 - spot) * p_coll,
+            "has_market": not no_market, "flags": []}
     add_node(nodes, Node(exit_id, "market", f"DEX exit for {coll['symbol']}", chain_name(cid), meta))
     node = next(n for n in nodes if n.id == exit_id)
     node.meta.setdefault("quotes", {})[lend_id] = {"sell_usd": forced, "price_impact": impact,
-                                                   "liquidation_bonus": bonus}
-    if impact > bonus:
+                                                   "spot_impact": spot, "liquidation_bonus": bonus}
+    if no_market:
+        msg = f"no DEX market for {coll['symbol']}: selling even {SPOT_USD:,.0f} USD returns " \
+              f"{1 - spot:.0%} of its value, so liquidators cannot sell it whatever the price " \
+              f"drop and the lent-out share relies on borrowers repaying"
+        if msg not in node.meta["flags"]:
+            node.meta["flags"].append(msg)
+    elif impact is not None and impact > bonus:
         cost = (f"no DEX route can absorb it (the best returns {1 - impact:.0%} of its value)"
                 if impact > 0.5 else f"costs {impact:.1%} on DEXes")
         node.meta["flags"].append(
@@ -276,18 +363,28 @@ def add_liquidation_exit(nodes: list[Node], edges: list[Edge], cid: int, lend_id
         node.meta["oracle_gap_to_dex"] = gap
         if abs(gap) > 0.02:
             node.meta["flags"].append(f"oracle price is {gap:+.1%} away from the DEX price")
-    edges.append(Edge(lend_id, exit_id, "liquidated_via", round(exposure, 3),
-                      f"A {SHOCK:.0%} {coll['symbol']} price drop liquidates {forced:,.0f} USD "
-                      f"(Morpho marketCollateralAtRisk); selling it for {loan['symbol']} costs "
-                      f"{impact:.1%} on the best KyberSwap route vs a {bonus:.1%} liquidation "
-                      f"bonus: {url}"))
+    if no_market:
+        why = (f"Selling {SPOT_USD:,.0f} USD of {coll['symbol']} for {loan['symbol']} returns "
+               f"{1 - spot:.0%} of its value on {venue} (no DEX trades it): "
+               f"liquidations cannot be executed, so {util:.0%} lent out relies on repayment: {url}")
+    else:
+        why = (f"A {SHOCK:.0%} {coll['symbol']} price drop liquidates {forced:,.0f} USD "
+               f"(Morpho marketCollateralAtRisk); selling it for {loan['symbol']} costs "
+               f"{impact:.1%} on {venue} vs a {bonus:.1%} liquidation bonus: {url}")
+    edges.append(Edge(lend_id, exit_id, "liquidated_via", round(exposure, 3), why))
 
 
-def _impact(cid: int, coll: dict, loan: dict, usd: float, p_coll: float, p_loan: float) -> float:
+def _impact(cid: int, coll: dict, loan: dict, usd: float, p_coll: float, p_loan: float,
+            pt: dict | None = None) -> float:
     """Price impact of selling `usd` worth of collateral for the loan token.
     The amount is rounded to 2 significant digits so the cached quote is
-    reused while the price barely moves."""
+    reused while the price barely moves. A PT is quoted on its Pendle pool
+    (PT -> SY, Pendle router), where liquidators would sell it."""
     tokens = float(f"{usd / p_coll:.2g}")
+    if pt:
+        q = pendle.sell_quote(cid, pt["pendle_market"], coll["address"], pt["pendle_sy"],
+                              int(tokens * 10 ** coll["decimals"]))
+        return abs(q["priceImpact"])
     q = kyberswap.sell_quote(cid, coll["address"], loan["address"], int(tokens * 10 ** coll["decimals"]))
     out = int((q or {}).get("amountOut") or 0) / 10 ** loan["decimals"]
     return max(0.0, 1 - out * p_loan / (tokens * p_coll))

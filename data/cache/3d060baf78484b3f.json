@@ -1,0 +1,1 @@
+{"fetched_at": 1791659424.5784438, "url": "https://ethereum-rpc.publicnode.com", "params": null, "body": {"jsonrpc": "2.0", "id": 1, "method": "eth_call", "params": [{"to": "0x8236a87084f8B84306f72007F36F2618A5634494", "data": "0x38d52e0f"}, "latest"]}, "data": {"jsonrpc": "2.0", "id": 1, "error": {"code": 3, "message": "execution reverted"}}}
