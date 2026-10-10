@@ -1,0 +1,1 @@
+{"fetched_at": 1791643785.333208, "url": "https://api.llama.fi/protocol/hastra", "params": null, "body": null, "data": {"name": "Hastra", "category": "RWA", "audits": "2", "audit_links": ["https://hastra.io/Hastra_vault-mint_&_vault-stake_Solana_Programs_Summary_Audit_Report.pdf"], "parentProtocol": null, "hacks": [], "chains": ["Solana"]}}

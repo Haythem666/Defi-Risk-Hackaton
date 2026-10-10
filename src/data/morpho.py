@@ -84,11 +84,12 @@ _VAULT_FIELDS = """
 """
 
 
-def vault(chain_id: int, address: str) -> dict:
-    """One Morpho vault: curator, fee, timelock, liquidity and allocation."""
+def vault(chain_id: int, address: str) -> dict | None:
+    """One Morpho vault (v1, "MetaMorpho"): curator, fee, timelock, liquidity
+    and allocation. None if the address is not a v1 vault (e.g. a Vault V2)."""
     q = f"query($a: String!, $chain: Int!) {{ vaultByAddress(address: $a, chainId: $chain) {{ {_VAULT_FIELDS} }} }}"
-    return fetch_json(URL, body={"query": q, "variables": {"a": address, "chain": chain_id}}
-                      )["data"]["vaultByAddress"]
+    data = fetch_json(URL, body={"query": q, "variables": {"a": address, "chain": chain_id}})
+    return (data.get("data") or {}).get("vaultByAddress")
 
 
 def listed_vaults(chain_id: int, first: int = 30) -> list[dict]:
@@ -101,6 +102,56 @@ def listed_vaults(chain_id: int, first: int = 30) -> list[dict]:
         items { address name asset { symbol } state { totalAssetsUsd } } } }"""
     return fetch_json(URL, body={"query": q, "variables": {"chains": [chain_id], "first": first}}
                       )["data"]["vaults"]["items"]
+
+
+# Vault V2: the curator plugs "adapters" (where money can go) and sets caps;
+# each setting has its own timelock. Selectors of the ones that matter.
+V2_TIMELOCKS = {
+    "0x60d54d41": "addAdapter", "0x585cd34b": "removeAdapter",
+    "0xf6f98fd5": "increaseAbsoluteCap", "0x2438525b": "increaseRelativeCap",
+    "0xb192a84a": "setIsAllocator", "0x5b34b823": "setAdapterRegistry",
+    "0x2cb19f98": "setReceiveSharesGate", "0xc21ad028": "setSendSharesGate",
+    "0x04dbf0ce": "setReceiveAssetsGate", "0x871c979c": "setSendAssetsGate",
+    "0x70897b23": "setPerformanceFee", "0xfe56e232": "setManagementFee",
+    "0x6a5f1aa2": "setPerformanceFeeRecipient", "0x9faae464": "setManagementFeeRecipient",
+    "0x47966291": "increaseTimelock", "0x5c1a1a4f": "decreaseTimelock",
+    "0x3e9d2ac7": "setForceDeallocatePenalty", "0xb2e32848": "abdicate",
+}
+
+_VAULT_V2_FIELDS = """
+  address name symbol listed totalAssetsUsd liquidityUsd netApy performanceFee managementFee
+  asset { symbol address price { usd } }
+  curator { address }
+  owner { address }
+  warnings { type level }
+  timelocks { selector duration }
+  adapters(first: 20) { items { address type assetsUsd
+    ... on MorphoMarketV1Adapter {
+      positions(first: 50) { items { market { marketId } state { supplyAssetsUsd } } } }
+    ... on MetaMorphoAdapter { metaMorpho { address } }
+    ... on MorphoVaultV2Adapter { innerVault { address } }
+  } }
+"""
+
+
+def vault_v2(chain_id: int, address: str) -> dict | None:
+    """One Morpho Vault V2: its adapters (Morpho markets, v1 vaults, other V2
+    vaults) with the USD each holds, curator, owner and per-setting timelocks."""
+    q = f"query($a: String!, $chain: Int!) {{ vaultV2ByAddress(address: $a, chainId: $chain) {{ {_VAULT_V2_FIELDS} }} }}"
+    data = fetch_json(URL, body={"query": q, "variables": {"a": address, "chain": chain_id}})
+    return (data.get("data") or {}).get("vaultV2ByAddress")
+
+
+def listed_vaults_v2(chain_id: int, first: int = 30) -> list[dict]:
+    """Largest Vault V2s listed in the Morpho app, by deposits."""
+    if chain_id not in NETWORKS:
+        return []
+    q = """query($chains: [Int!], $first: Int) {
+      vaultV2s(first: $first, orderBy: TotalAssetsUsd, orderDirection: Desc,
+               where: {chainId_in: $chains, listed: true}) {
+        items { address name asset { symbol } totalAssetsUsd } } }"""
+    data = fetch_json(URL, body={"query": q, "variables": {"chains": [chain_id], "first": first}})
+    return ((data.get("data") or {}).get("vaultV2s") or {}).get("items") or []
 
 
 def vault_url(chain_id: int, address: str) -> str:

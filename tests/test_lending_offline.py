@@ -52,3 +52,18 @@ def test_morpho_vault_spreads_exposure_over_its_markets():
     allocs = [e for e in g.edges if e.kind == "allocates_to"]
     assert len(allocs) >= 2
     assert sum(e.exposure for e in allocs) <= 1.0 + 0.0005 * len(allocs)  # 3-decimal rounding
+
+
+BELEM_RWA_EURCV = "0xD6d4b804014EF27836dBe9f8f6Bf6c71251548Ec"  # a Morpho Vault V2
+
+
+def test_morpho_vault_v2_markets_through_adapters_and_controllers():
+    g = build_graph(Position(1, BELEM_RWA_EURCV, 1e6, kind="morpho_vault"))
+    _check(g)
+    vault = next(n for n in g.nodes if n.type == "vault")
+    assert vault.meta["version"] == 2
+    assert vault.meta["timelocks_days"]["addAdapter"] >= 0
+    allocs = [e for e in g.edges if e.kind == "allocates_to"]
+    assert len(allocs) >= 2
+    assert sum(e.exposure for e in allocs) <= 1.0 + 0.0005 * len(allocs)
+    assert {e.kind for e in g.edges if e.source == vault.id} >= {"owned_by", "curated_by"}

@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 import streamlit as st
 
-from src.data import aave, hyperliquid, morpho, pendle
+from src.data import aave, cache, hyperliquid, morpho, pendle
 from src.decision.exit_cost import exit_cost as position_exit_cost
 from src.decision.rule import decide
 from src.graph.build import build_graph
@@ -19,7 +19,8 @@ from src.schemas import Position
 
 COLORS = {"position": "#f4a261", "chain": "#8ecae6", "protocol": "#90be6d",
           "asset": "#ffd166", "issuer": "#f28482", "oracle": "#cdb4db",
-          "market": "#a8dadc", "lending": "#b5838d", "venue": "#adb5bd", "vault": "#e9c46a"}
+          "market": "#a8dadc", "lending": "#b5838d", "venue": "#adb5bd", "vault": "#e9c46a",
+          "admin": "#ffafcc"}
 
 st.set_page_config(page_title="DeFi Risk Dependency", layout="wide")
 st.title("DeFi Risk Dependency: stay or exit?")
@@ -29,12 +30,13 @@ with st.sidebar:
     st.header("Position")
     kinds = {"Pendle PT": "pendle_pt", "Lend on Morpho": "morpho_supply",
              "Supply to Aave": "aave_supply", "Morpho vault": "morpho_vault",
-             "Hyperliquid vault (perps)": "hyperliquid_vault"}
+             "Hyperliquid vault (perps)": "hyperliquid_vault",
+             "Any contract (on-chain crawler)": "contract"}
     kind = kinds[st.radio("Pocket type", list(kinds))]
     # Only offer chains where this pocket type exists.
     supported = {"pendle_pt": list(CHAINS), "morpho_supply": list(morpho.NETWORKS),
                  "aave_supply": list(aave.CHAIN_IDS), "morpho_vault": list(morpho.NETWORKS),
-                 "hyperliquid_vault": [999]}[kind]
+                 "hyperliquid_vault": [999], "contract": list(CHAINS)}[kind]
     chain_id = st.selectbox("Chain", supported, format_func=lambda c: CHAINS[c])
     asset_address = None
     if kind == "pendle_pt":
@@ -48,9 +50,23 @@ with st.sidebar:
                   for m in morpho.listed_markets(chain_id)}
         address = labels[st.selectbox("Morpho market (collateral / lent asset)", list(labels))]
     elif kind == "morpho_vault":
-        labels = {f"{v['name']} · {v['asset']['symbol']} ({v['state']['totalAssetsUsd'] / 1e6:,.0f}M)":
-                  v["address"] for v in morpho.listed_vaults(chain_id)}
-        address = labels[st.selectbox("Morpho vault", list(labels))]
+        vaults = [(v["name"], v["asset"]["symbol"], v["state"]["totalAssetsUsd"] or 0, v["address"], "")
+                  for v in morpho.listed_vaults(chain_id)]
+        vaults += [(v["name"], v["asset"]["symbol"], v["totalAssetsUsd"] or 0, v["address"], " · V2")
+                   for v in morpho.listed_vaults_v2(chain_id)]
+        labels = {f"{n} · {s} ({t / 1e6:,.0f}M){ver}": a
+                  for n, s, t, a, ver in sorted(vaults, key=lambda x: -x[2])}
+        address = labels[st.selectbox("Morpho vault (v1 and V2, largest listed)", list(labels))]
+        typed = st.text_input("...or paste any Morpho vault address (v1 or V2)",
+                              help="E.g. Belem RWA EURCV: 0xD6d4b804014EF27836dBe9f8f6Bf6c71251548Ec").strip()
+        address = typed or address
+    elif kind == "contract":
+        address = st.text_input(
+            "Token or vault address", "0x9D39A5DE30e57443BfF2A8307A4256c8797A3497" if chain_id == 1 else "",
+            help="Dependencies are read from the contracts themselves (default: sUSDe). "
+                 "Try the Steakhouse USDC vault: 0xBEEF01735c132Ada46AA9aA4c54623cAA92A64CB").strip()
+        if not address:
+            st.stop()
     elif kind == "hyperliquid_vault":
         address = st.text_input("Hyperliquid vault address", hyperliquid.HLP,
                                 help="Default: HLP, the exchange's market-making vault").strip()
@@ -71,10 +87,13 @@ pos = Position(chain_id, address, float(size), horizon, book_share, kind, asset_
 
 @st.cache_data(ttl=600, show_spinner="Discovering dependencies from live data...")
 def load_graph(p: Position):
-    return build_graph(p)
+    """The graph, and the log of every API call made to build it."""
+    cache.CALLS.clear()
+    g = build_graph(p)
+    return g, list(cache.CALLS)
 
 
-graph = load_graph(pos)
+graph, api_calls = load_graph(pos)
 by_id = {n.id: n for n in graph.nodes}
 
 # --- 1. Dependency graph --------------------------------------------------
@@ -90,6 +109,19 @@ st.graphviz_chart("\n".join(dot))
 with st.expander("Edges and evidence"):
     st.dataframe(pd.DataFrame([vars(e) for e in graph.edges]), width="stretch")
 
+with st.expander(f"API calls behind this graph ({len(api_calls)})"):
+    apis = sorted({c["api"] for c in api_calls})
+    shown = st.multiselect("APIs", apis, default=["morpho"] if "morpho" in apis else apis)
+    st.caption("What each source was asked and the start of its answer; the whole answer is "
+               "in the cache file. Same log in the terminal: python -m src.trace <kind> <chain> <address>")
+    st.dataframe(pd.DataFrame([c for c in api_calls if c["api"] in shown]), width="stretch")
+
+flags = [{"contract": n.name, "red flag": f} for n in graph.nodes for f in n.meta.get("flags") or []]
+if flags:
+    st.markdown("**Red flags** (read on-chain: who controls each contract, upgradeability, "
+                "withdrawal delays, unpublished code)")
+    st.dataframe(pd.DataFrame(flags), width="stretch")
+
 oracles = [n for n in graph.nodes if n.type == "oracle"]
 if oracles:
     st.markdown("**Oracle checks** (price vs PT market price, public source code)")
@@ -97,8 +129,8 @@ if oracles:
         "oracle": n.meta.get("address") or n.name,
         "price (USD)": f"{n.meta['price_usd']:.4f}" if n.meta.get("price_usd") else "-",
         "gap to market": f"{n.meta['gap_to_market']:+.2%}" if n.meta.get("gap_to_market") is not None else "-",
-        "source verified": {True: "yes", False: "NO"}.get(n.meta.get("source_verified"), "n/a"),
-        "proxy of": n.meta.get("proxy_of") or "-",
+        "source verified": {True: "yes", False: "NO"}.get(n.meta.get("source_verified", n.meta.get("verified")), "n/a"),
+        "proxy of": n.meta.get("proxy_of") or n.meta.get("implementation") or "-",
         "read from": n.meta.get("source")} for n in oracles]), width="stretch")
 
 # --- 2. Risk --------------------------------------------------------------
@@ -140,4 +172,4 @@ c[4].metric("Breakeven p*", "-" if verdict.breakeven_probability is None
 (st.error if verdict.decision == "EXIT" else st.success)(verdict.reason)
 if "stuck" in cost_source:
     st.warning(cost_source)
-st.caption("Phase 0: incident probabilities and severities are placeholders (see src/risk/assumptions.py).")
+st.caption("Rates and severities: DATA rows are calibrated on DeFiLlama hacks and stablecoin history (data/calibration.json); JUDGEMENT rows are expert estimates.")

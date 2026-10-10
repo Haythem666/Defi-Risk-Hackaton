@@ -15,6 +15,7 @@ NodeType = Literal[
     "lending",    # lending market using the asset as collateral
     "venue",      # external venue (e.g. perp exchange)
     "vault",      # managed vault allocating deposits across markets
+    "admin",      # who controls a contract: a wallet, a multisig, a timelock
 ]
 
 PositionKind = Literal[
@@ -23,6 +24,7 @@ PositionKind = Literal[
     "aave_supply",    # supplying an asset to an Aave pool
     "morpho_vault",   # depositing in a Morpho vault (curated allocation to markets)
     "hyperliquid_vault",  # depositing in a vault trading on the Hyperliquid perp exchange
+    "contract",       # any token or vault address: dependencies read on-chain by the crawler
 ]
 
 IncidentType = Literal[
@@ -38,7 +40,7 @@ IncidentType = Literal[
 class Position:
     """What the user holds. Input of the whole pipeline."""
     chain_id: int                # EVM chain id, 1 = Ethereum
-    market_address: str          # Pendle market / Morpho market id / Aave pool / vault address
+    market_address: str          # Pendle market / Morpho market id / Aave pool / vault / any contract
     size_usd: float              # notional of the pocket
     horizon_days: int = 30       # decision horizon: probabilities are over this window
     book_share: float = 0.10     # share of the whole book in this pocket (brief: 10 pockets of 10%)
