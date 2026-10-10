@@ -1,0 +1,1 @@
+{"fetched_at": 1791659457.7483869, "url": "https://api.coingecko.com/api/v3/search", "params": {"query": "infiniFi USD"}, "body": null, "data": [{"id": "infinifi-usd", "name": "InfiniFi USD", "symbol": "IUSD"}]}

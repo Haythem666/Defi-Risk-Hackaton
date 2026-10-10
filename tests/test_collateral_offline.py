@@ -63,3 +63,32 @@ def test_website_match_ignores_shared_hosting():
 def test_base58_of_a_solana_mint():
     raw = bytes.fromhex("3db012feaceb9de59e2cc3fbbb7a23b6f2ae778ae9a4fbc63f44e38f01f7e9e0")
     assert _base58(raw) == "59obFNBzyTBGowrkif5uK7ojS58vsuWz3ZCvg6tfZAGw"
+
+
+BELEM_RWA_EURCV = "0xD6d4b804014EF27836dBe9f8f6Bf6c71251548Ec"   # lends EURCV against mGLOeuro
+ROCKAWAYX_USDC_YIELD = "0xE0181090c22579B6A217f1522cbf8c9f1F0C1965"  # PT-reUSD, strUSD, siUSD...
+
+
+def test_issuer_with_offchain_assets_gets_an_offchain_box(graph):
+    box = _out(graph, "issuer:huma", "backed_off_chain")
+    assert box and graph.node(box[0].target).meta["role"] == "offchain_backing"
+    assert params_for(graph.node(box[0].target)) == []  # the issuer's rate covers it
+
+
+def test_collateral_with_no_market_is_flagged_whatever_the_drop():
+    g = build_graph(Position(1, BELEM_RWA_EURCV, 1e6, kind="morpho_vault"))
+    exit_node = g.node("market:dex-exit-mGLOeuro")
+    assert exit_node.meta["has_market"] is False
+    assert any("no DEX market" in f for f in exit_node.meta["flags"])
+    edge = next(e for e in g.edges if e.target == exit_node.id)
+    assert edge.exposure == round(g.node(edge.source).meta["utilization"], 3)
+
+
+def test_pt_and_vault_collateral_are_unwrapped():
+    g = build_graph(Position(1, ROCKAWAYX_USDC_YIELD, 1e6, kind="morpho_vault"))
+    assert _out(g, "asset:PT-reUSD-10DEC2026", "redeems_into")[0].target == "asset:reUSD"
+    assert _out(g, "asset:siUSD", "holds")[0].target == "asset:iUSD"  # ERC-4626 asset()
+    assert g.node("asset:PT-reUSD-10DEC2026").meta["wraps"] == "asset:reUSD"
+    # a PT is quoted on its Pendle pool, not flagged as having no market
+    pt_exit = g.node("market:dex-exit-PT-reUSD-10DEC2026")
+    assert pt_exit.meta["has_market"] is True

@@ -1,0 +1,1 @@
+{"fetched_at": 1791659440.6863272, "url": "https://api.llama.fi/protocol/re", "params": null, "body": null, "data": {"name": "Re", "category": "RWA", "audits": "2", "audit_links": ["https://hacken.io/audits/re-protocol/"], "parentProtocol": null, "hacks": [], "chains": ["Base", "Avalanche", "Ethereum", "Arbitrum"]}}

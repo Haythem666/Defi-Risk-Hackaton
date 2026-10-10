@@ -117,6 +117,8 @@ def params_for(node: Node) -> list[dict]:
         return []
     if meta.get("part_of"):  # e.g. the aggregator behind an oracle proxy: counted on the proxy
         return []
+    if meta.get("role") == "offchain_backing":  # its risk is the issuer's rate, not counted twice
+        return []
     if t == "market" and meta.get("role") == "liquidation_exit":
         return [JUDGEMENT["liquidation_exit"]]
     if t in JUDGEMENT:

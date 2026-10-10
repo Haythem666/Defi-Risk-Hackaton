@@ -1,0 +1,1 @@
+{"fetched_at": 1791658944.4369416, "url": "https://aggregator-api.kyberswap.com/ethereum/api/v1/routes", "params": {"tokenIn": "0xDBDC1Ef57537E34680B898E1FEBD3D68c7389bCB", "tokenOut": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", "amountIn": "9100000000000000000000"}, "body": null, "data": {"amountIn": "9100000000000000000000", "amountOut": "9953707083", "dexes": ["infinifi"]}}

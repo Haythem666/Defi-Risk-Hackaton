@@ -1,0 +1,1 @@
+{"fetched_at": 1791659327.5587595, "url": "https://aggregator-api.kyberswap.com/ethereum/api/v1/routes", "params": {"tokenIn": "0x22aE3D9a738471f405169Af055d31c687087d4c7", "tokenOut": "0x5F7827FDeb7c20b443265Fc2F40845B715385Ff2", "amountIn": "1000000"}, "body": null, "data": {"amountIn": "1000000", "amountOut": "1016124255209691081", "dexes": ["fluid-dex-t1", "uniswapv3"]}}

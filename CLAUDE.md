@@ -77,7 +77,12 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - Collateral depth (Morpho markets and Aave pools): issuer from DeFiLlama yield pools, else the
   token's CoinGecko website matched to a DeFiLlama protocol (PST -> Huma); bridged copies found
   on-chain (PST: CCIP burn/mint pool, backed on Solana); token controllers; oracle feeds with a flag
-  when the price is a reported rate, not a market price; DEX exit vs the liquidation bonus.
+  when the price is a reported rate, not a market price; DEX exit vs the liquidation bonus (a PT is
+  quoted on its Pendle pool; a collateral no DEX trades is flagged whatever the drop, exposure =
+  utilization). Collateral that wraps another token is opened, 2 levels deep: a PT via the Pendle
+  API (PT-reUSD -> reUSD), a vault share via ERC-4626 asset() (siUSD -> iUSD; a Morpho vault share
+  also brings its markets). An issuer whose DeFiLlama category means off-chain assets (RWA, RWA
+  Lending, Basis Trading, CeDeFi, Off-Chain Credit) gets an "Off-chain backing" box: where the graph stops.
 - Issuer depth: Ethena -> exchange venues (Binance, OKX, ...) from Ethena's transparency API,
   exposure = venue share of backing. Protocol/issuer nodes carry DeFiLlama category, audits and
   past hacks (input for calibrating the risk model).

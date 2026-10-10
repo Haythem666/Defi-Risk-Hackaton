@@ -1,0 +1,1 @@
+{"fetched_at": 1791659438.6275105, "url": "https://api.coingecko.com/api/v3/search", "params": {"query": "trUSD"}, "body": null, "data": [{"id": "tori-trusd", "name": "Tori trUSD", "symbol": "TRUSD"}, {"id": "tori-ecosystem-vault", "name": "Tori Ecosystem Vault", "symbol": "ETRUSD"}, {"id": "tori-staked-trusd", "name": "Tori Staked trUSD", "symbol": "STRUSD"}]}
