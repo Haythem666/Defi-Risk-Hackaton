@@ -22,6 +22,20 @@ COLORS = {"position": "#f4a261", "chain": "#8ecae6", "protocol": "#90be6d",
           "market": "#a8dadc", "lending": "#b5838d", "venue": "#adb5bd", "vault": "#e9c46a",
           "admin": "#ffafcc"}
 
+NODE_DESCRIPTIONS = {
+    "position": ("Orange", "Position", "The investment you hold and are assessing."),
+    "chain": ("Blue", "Blockchain", "The network that executes and settles transactions."),
+    "protocol": ("Green", "Protocol", "The smart-contract system providing the DeFi service."),
+    "asset": ("Yellow", "Asset", "A token underlying, denominating, or securing the investment."),
+    "issuer": ("Coral", "Issuer", "The project or entity issuing the underlying token."),
+    "oracle": ("Lavender", "Price oracle", "The price feed used to value assets or collateral."),
+    "market": ("Teal", "Trading market", "The trading pool used to sell or exchange an asset."),
+    "lending": ("Mauve", "Lending market", "A market where assets are lent against collateral."),
+    "venue": ("Gray", "External venue", "An exchange or platform used for hedging or trading."),
+    "vault": ("Gold", "Vault", "A strategy that manages deposits and allocates them to markets."),
+    "admin": ("Pink", "Administrator", "An address with control permissions, such as changing settings or upgrading contracts."),
+}
+
 st.set_page_config(page_title="DeFi Risk Dependency", layout="wide")
 st.title("DeFi Risk Dependency: stay or exit?")
 
@@ -105,6 +119,25 @@ for e in graph.edges:
     dot.append(f'"{e.source}" -> "{e.target}" [label="{e.kind} {e.exposure:.0%}", fontsize=9];')
 dot.append("}")
 st.graphviz_chart("\n".join(dot))
+
+st.markdown("**Box colors — what each component represents**")
+st.caption("Colors identify component types, not risk levels. Each box also shows its type in parentheses.")
+present_types = {n.type for n in graph.nodes}
+legend_items = []
+for node_type, (color_name, label, description) in NODE_DESCRIPTIONS.items():
+    if node_type in present_types:
+        legend_items.append(
+            '<div style="display:flex;align-items:flex-start;gap:10px;">'
+            f'<span aria-hidden="true" style="background:{COLORS[node_type]};'
+            'width:18px;height:18px;flex:0 0 18px;border:1px solid #555;'
+            'border-radius:3px;margin-top:3px;"></span>'
+            f'<div><strong>{color_name} — {label}</strong><br>{description}</div></div>'
+        )
+st.markdown(
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));'
+    'gap:14px 24px;margin-bottom:18px;">' + "".join(legend_items) + "</div>",
+    unsafe_allow_html=True,
+)
 
 with st.expander("Edges and evidence"):
     st.dataframe(pd.DataFrame([vars(e) for e in graph.edges]), width="stretch")
