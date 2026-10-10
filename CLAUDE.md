@@ -10,7 +10,8 @@ Judging: dependency discovery 30%, impact estimation 30%, decision usefulness 25
 working demo on REAL data 15%. It must run on real data, not just be slides.
 
 ## Decision rule (core idea)
-Exit if `P(incident) * loss_if_hit > exit_cost`.
+Exit if `P(incident) * loss_if_hit > exit_cost + yield given up over the horizon` (the yield
+you stop earning by holding cash instead), or when a lending position crosses its exit trigger u*.
 Also report the breakeven probability `p* = exit_cost / loss_if_hit`.
 Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 11% slippage.
 
@@ -100,8 +101,7 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - Issuer depth: Ethena -> exchange venues (Binance, OKX, ...) from Ethena's transparency API,
   exposure = venue share of backing. Protocol/issuer nodes carry DeFiLlama category, audits and
   past hacks (input for calibrating the risk model).
-- Known gaps: Kamino oracles and Solana program authorities not read; Euler not covered (no keyless API), venues only for Ethena, Aave PT exposure still crude (share of PT TVL), exit cost ignores forgone yield and crisis
-  liquidity, no portfolio view yet.
+- Known gaps: Kamino oracles and Solana program authorities not read; Euler not covered (no keyless API), venues only for Ethena, Aave PT exposure still crude (share of PT TVL), exit cost ignores crisis liquidity (forgone yield is now counted), no portfolio view yet.
 
 ## Commands
 - Install: `pip install -r requirements.txt`

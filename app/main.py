@@ -1,7 +1,6 @@
 """Streamlit UI. Run from repo root: streamlit run app/main.py"""
 
 import sys
-from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -14,7 +13,7 @@ from src.decision.exit_cost import exit_cost as position_exit_cost
 from src.decision.rule import decide
 from src.graph.build import build_graph
 from src.graph.common import CHAINS, EVM_CHAINS
-from src.decision.snell import exit_rule
+from src.decision.snell import exit_rule, position_yield
 from src.risk import stress
 from src.risk.model import build_scenarios, simulate
 from src.schemas import Position
@@ -183,14 +182,6 @@ if oracles:
 st.subheader("2. Incident scenarios over the horizon")
 scenarios = build_scenarios(graph, horizon)
 
-stress_node = st.selectbox(
-    "Stress test: suppose this dependency is hit right now",
-    ["(none)"] + sorted({s.node_id for s in scenarios}))
-if stress_node != "(none)":
-    p_stress = st.slider("Probability the incident turns into a loss for us", 0.0, 1.0, 0.5)
-    scenarios = [replace(s, probability=p_stress) if s.node_id == stress_node else s
-                 for s in scenarios]
-
 risk = simulate(scenarios)
 st.dataframe(pd.DataFrame([{
     "node": by_id[s.node_id].name, "incident": s.incident,
@@ -203,6 +194,18 @@ st.subheader("Stress engine: what each failure costs this position")
 st.caption("Each dependency is hit alone at 5%, 20%, 50% and 100%; the loss spreads through the graph "
            "(capped DebtRank propagation: value slices add up, shared dependencies count once, lenders "
            "lose only beyond the borrowers' LLTV buffer, recovering the collateral at its DEX exit price).")
+st.markdown("**What if?** Pick a dependency and how hard it is hit: the engine spreads the loss "
+            "to your position.")
+w = st.columns([3, 2])
+names = {n.name: n.id for n in graph.nodes if n.id != graph.position_id}
+what = w[0].selectbox("Dependency hit", sorted(names))
+hit = w[1].slider("It loses (% of its value)", 0, 100, 20, step=5,
+                  help="5% = a token trading 5% below its usual price, or 5% of a protocol's "
+                       "funds stolen; 100% = it goes to zero.")
+lost = stress.position_loss(graph, names[what], hit / 100)
+st.metric(f"Your position loses if {what} loses {hit}%", f"{lost:.1%}",
+          f"{lost * size:,.0f} USD", delta_color="inverse")
+st.markdown("**Every dependency at once**: the same question for each of them, at 5%, 20%, 50% and 100%.")
 table = stress.stress_table(graph)
 st.dataframe(pd.DataFrame([{
     "dependency": r["name"], "type": r["type"],
@@ -227,22 +230,26 @@ st.subheader("3. Decision")
 est_cost, cost_source = position_exit_cost(pos, graph)
 use_brief = st.checkbox("Use the brief's reference exit cost (11%) instead of the live quote")
 exit_cost = 0.11 if use_brief else est_cost
-verdict = decide(risk, exit_cost)
+rule = exit_rule(graph, exit_cost)
+apy = position_yield(graph)
+forgone = apy * horizon / 365
+verdict = decide(risk, exit_cost, forgone, rule)
 
-c = st.columns(5)
+c = st.columns(6)
 c[0].metric("Verdict", verdict.decision)
 c[1].metric("Expected loss", f"{risk.expected_loss:.2%}",
             help=f"= {risk.expected_loss * size:,.0f} USD, {risk.expected_loss * book_share:.3%} of book")
 c[2].metric("Worst 5% loss", f"{risk.worst_case_loss:.2%}")
 c[3].metric("Exit cost", f"{exit_cost:.2%}",
             help="Brief reference case" if use_brief else cost_source)
+c[5].metric("Yield given up", f"{forgone:.2%}",
+            help=f"{apy:.2%}/year over {horizon} days: what leaving costs on top of the exit cost")
 c[4].metric("Breakeven p*", "-" if verdict.breakeven_probability is None
             else f"{verdict.breakeven_probability:.1%}",
             help="If the worst scenario's probability is above this, exiting is cheaper.")
 (st.error if verdict.decision == "EXIT" else st.success)(verdict.reason)
 if "stuck" in cost_source:
     st.warning(cost_source)
-rule = exit_rule(graph, exit_cost)
 if rule:
     st.markdown("**Exit trigger** (optimal stopping: exit before utilization freezes withdrawals)")
     d = st.columns(4)

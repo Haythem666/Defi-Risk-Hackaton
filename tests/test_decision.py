@@ -23,3 +23,15 @@ def test_amm_exit_cost_grows_with_size():
     small = amm_exit_cost(10_000, 4_000_000)
     big = amm_exit_cost(1_000_000, 4_000_000)
     assert 0 < small < big < 1
+
+
+def test_yield_given_up_counts_as_a_cost_of_leaving():
+    risk = _risk(0.01, 0.20)                     # expected loss 0.2% over the horizon
+    assert decide(risk, 0.0).decision == "EXIT"  # free exit, no yield: any risk says leave
+    assert decide(risk, 0.0, forgone_yield=0.006).decision == "STAY"  # 7%/yr x 30 days = 0.6%
+
+
+def test_crossed_exit_trigger_forces_exit():
+    risk = _risk(0.001, 0.10)
+    trigger = {"triggered": True, "utilization": 0.95, "u_star": 0.90, "haircut": 0.5}
+    assert decide(risk, 0.0, 0.006, trigger).decision == "EXIT"
