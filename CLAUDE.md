@@ -23,14 +23,18 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - `src/schemas.py`: shared data contract (Position, Node, Edge, DependencyGraph, Scenario, RiskResult, Verdict). Do not change silently.
 - `src/data/`: fetchers for real data (one file per source): `pendle.py`, `defillama.py`, `morpho.py`,
   `aave.py`, `ethena.py` (where USDe backing sits), `hyperliquid.py` (perp vaults),
-  `chain.py` (public RPC reads + Sourcify).
+  `chain.py` (public RPC reads + Sourcify), `kyberswap.py` (DEX sell quotes),
+  `coingecko.py` (a token's website, to find its issuer).
   All HTTP goes through `cache.fetch_json`, which saves every response to `data/cache/` (committed;
   bulky calibration inputs go to `data/raw/`, not committed)
   and falls back to it when the API is down. `DEFI_OFFLINE=1` forces cache only.
 - `src/graph/`: builds a DependencyGraph for a position. `build.py` dispatches on `Position.kind`:
   `pendle_pt.py` (5 layers from live APIs), `lending.py` (Morpho market / Aave pool supply /
   Morpho vault), `perp_vault.py` (Hyperliquid vault: venue, bridge, oracle, positions).
-  `common.py` holds shared helpers (chains, explorer links, issuer discovery, oracle checks).
+  `common.py` holds shared helpers (chains, explorer links, issuer discovery, oracle checks,
+  the feeds behind a Morpho oracle). `collateral.py` looks behind each lending collateral: issuer,
+  bridge (Chainlink CCIP, LayerZero OFT) and home chain, who controls the token, other lenders
+  accepting it, and whether liquidators can sell it (DEX exit).
 - `src/risk/`: `calibration.py` (builds `data/calibration.json` from DeFiLlama hacks, protocol TVL
   history and stablecoin prices: `python -m src.risk.calibration`), `assumptions.py` (picks the rate
   and severity for each node: DATA rows from the calibration, JUDGEMENT rows labelled as such),
@@ -59,6 +63,8 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
   to collateral = pool utilization; a vault's exposure to a market = its share of the vault.
   A PT's exposure to a Morpho market = PT liquidated if its price drops 5% (Morpho
   marketCollateralAtRisk) / Pendle pool liquidity, capped at 1 (forced-selling pressure).
+  A market's exposure to its collateral's DEX exit = utilization x (price impact of selling what a
+  5% drop liquidates, KyberSwap quote) / liquidation bonus, capped at utilization.
   Exposure along the graph = sum over paths of the product of edge exposures, capped at 1.
 - Real: graph discovery (Pendle + DeFiLlama + Morpho + Aave), issuer found automatically from
   DeFiLlama yield pools (the largest pool of the token, if it mints it rather than lends it), oracle price read on-chain and compared
@@ -66,7 +72,12 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - Calibrated (data/calibration.json, last 3y of hacks on protocols holding >= 100M USD; depegs since
   2021): hack rate and severity per DeFiLlama category (pulled toward all-DeFi when data is thin),
   oracle manipulation, large-exchange hacks, stablecoin depegs per family blended with each coin's
-  own record. Still JUDGEMENT: chain halt, Pendle pool liquidity crunch, lending cascade, LST depeg.
+  own record. Still JUDGEMENT: chain halt, Pendle pool liquidity crunch, lending cascade, LST depeg,
+  collateral DEX exit drying up.
+- Collateral depth (Morpho markets and Aave pools): issuer from DeFiLlama yield pools, else the
+  token's CoinGecko website matched to a DeFiLlama protocol (PST -> Huma); bridged copies found
+  on-chain (PST: CCIP burn/mint pool, backed on Solana); token controllers; oracle feeds with a flag
+  when the price is a reported rate, not a market price; DEX exit vs the liquidation bonus.
 - Issuer depth: Ethena -> exchange venues (Binance, OKX, ...) from Ethena's transparency API,
   exposure = venue share of backing. Protocol/issuer nodes carry DeFiLlama category, audits and
   past hacks (input for calibrating the risk model).

@@ -1,6 +1,8 @@
 """Helpers shared by every graph builder: chain names, explorer links,
 issuer discovery and oracle checks."""
 
+import re
+
 from src.data import chain, defillama, ethena
 from src.schemas import Edge, Node
 
@@ -138,9 +140,66 @@ def add_oracle(nodes: list[Node], edges: list[Edge], cid: int, source_id: str,
         nodes.append(Node(oracle_id, "oracle", f"Oracle {address[:10]}", chain_name(cid), {
             "address": address, "source": source, "price_usd": price_usd,
             "gap_to_market": gap, "proxy_of": impl, "source_verified": verified}))
+        try:
+            _add_oracle_feeds(nodes, edges, cid, nodes[-1], address)
+        except Exception:
+            pass  # not a Morpho oracle, or the RPC is down: the oracle node stays
     edges.append(Edge(source_id, oracle_id, "priced_by", round(exposure, 3),
                       explorer(cid, address)))
     return oracle_id
+
+
+# Morpho oracles (MorphoChainlinkOracleV2) build their price from up to four
+# feeds and two ERC-4626 vaults, each readable on-chain.
+ORACLE_PARTS = {"BASE_FEED_1": "0xf50a4718", "BASE_FEED_2": "0xdc53858c",
+                "QUOTE_FEED_1": "0x56095e11", "QUOTE_FEED_2": "0xacfbd39e",
+                "BASE_VAULT": "0xeaa2d7b4", "QUOTE_VAULT": "0x2e6f20a6"}
+DESCRIPTION, OWNER = "0x7284e416", "0x8da5cb5b"
+# Feed descriptions that mean "a rate reported by the issuer or computed",
+# not a price observed on a market (Chainlink names them like this).
+NOT_MARKET = re.compile(r"exchange rate|calculated|fundamental|\bnav\b|redemption|fixed",
+                        re.IGNORECASE)
+
+
+def _add_oracle_feeds(nodes: list[Node], edges: list[Edge], cid: int, oracle: Node,
+                      address: str) -> None:
+    """The feeds and vaults behind a Morpho oracle, who controls each feed,
+    and a flag when the price is a reported rate rather than a market price:
+    such a price does not fall when the token sells off on markets, so
+    liquidations do not start and lenders are left holding the collateral."""
+    from src.graph.crawler import _addr, _string, _words, control_flags, controller
+    calls = [("eth_call", [{"to": address, "data": s}, "latest"]) for s in ORACLE_PARTS.values()]
+    parts = {fn: _addr((_words(r) or [None])[0]) for fn, r in zip(ORACLE_PARTS, chain.batch(cid, calls))}
+    parts = {fn: a for fn, a in parts.items() if a}
+    if not parts:
+        return
+    feeds = [(fn, a) for fn, a in parts.items() if "FEED" in fn]
+    calls = [("eth_call", [{"to": a, "data": s}, "latest"]) for _, a in feeds for s in (DESCRIPTION, OWNER)]
+    res = chain.batch(cid, calls)
+    flags = oracle.meta.setdefault("flags", [])
+    oracle.meta["feeds"] = {}
+    for i, (fn, a) in enumerate(feeds):
+        desc, owner = _string(res[2 * i]), _addr((_words(res[2 * i + 1]) or [None])[0])
+        oracle.meta["feeds"][fn] = {"address": a, "description": desc, "owner": owner}
+        feed_id = add_node(nodes, Node(f"oracle:{a}", "oracle", f"Feed {desc or a[:10]}", chain_name(cid),
+                                       {"address": a, "description": desc, "part_of": oracle.id}))
+        edges.append(Edge(oracle.id, feed_id, "reads_from", 1.0,
+                          f"{fn}() on {explorer(cid, address)} returns {a}"
+                          + (f" ('{desc}')" if desc else "")))
+        if desc and NOT_MARKET.search(desc):
+            flags.append(f"price comes from '{desc}', a reported rate, not a market price: "
+                         f"a sell-off on markets does not move it, so liquidations do not start")
+        if owner:
+            ctrl = controller(cid, owner)
+            add_node(nodes, Node(f"admin:{owner}", "admin", ctrl["label"], chain_name(cid), ctrl))
+            edges.append(Edge(feed_id, f"admin:{owner}", "owned_by", 1.0,
+                              f"owner() of feed {explorer(cid, a)} is {owner} (read on-chain)"))
+            flags += [f"feed {f}" for f in control_flags("owner", ctrl)]
+    for fn in ("BASE_VAULT", "QUOTE_VAULT"):
+        if fn in parts:
+            oracle.meta["feeds"][fn] = {"address": parts[fn]}
+            flags.append(f"{fn} {parts[fn][:10]}: the price includes that vault's own share "
+                         f"price, which its contract reports")
 
 
 def morpho_oracle_usd(cid: int, market: dict) -> float | None:

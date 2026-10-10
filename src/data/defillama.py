@@ -49,6 +49,44 @@ def yield_pools() -> list[dict]:
     return fetch_json(YIELDS, max_age_s=24 * 3600, transform=_big_pools)
 
 
+def _slim_protocols(raw: list) -> list[dict]:
+    keep = ("slug", "name", "url", "category", "tvl")
+    return [{k: p.get(k) for k in keep} for p in raw if p.get("url")]
+
+
+def protocols() -> list[dict]:
+    """Every DeFiLlama protocol: slug, name, website, category, TVL."""
+    return fetch_json(f"{BASE}/protocols", max_age_s=24 * 3600, transform=_slim_protocols)
+
+
+def site(url: str) -> str:
+    """Registrable domain of a URL: https://app.huma.finance/x -> huma.finance."""
+    host = url.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0].lower()
+    return ".".join(host.split(".")[-2:])
+
+
+# Shared hosting: a website there says nothing about who runs the project.
+SHARED_SITES = {"github.com", "github.io", "gitbook.io", "medium.com", "x.com", "twitter.com",
+                "linktr.ee", "notion.site", "t.me", "discord.gg", "vercel.app", "netlify.app",
+                "google.com", "substack.com", "mirror.xyz"}
+
+
+def protocol_by_site(url: str) -> dict | None:
+    """The largest DeFiLlama protocol whose website is on the same domain."""
+    if site(url) in SHARED_SITES:
+        return None
+    same = [p for p in protocols() if site(p["url"]) == site(url)]
+    return max(same, key=lambda p: p["tvl"] or 0, default=None)
+
+
+def token_pools(pools: list[dict], chain: str, address: str) -> list[dict]:
+    """Yield pools on `chain` that hold `address` (EVM addresses compared
+    lowercase, others such as Solana mints as they are)."""
+    a = address.lower() if address.startswith("0x") else address
+    return [p for p in pools if p["chain"] == chain and a in
+            [(u.lower() if u.startswith("0x") else u) for u in p.get("underlyingTokens") or []]]
+
+
 def find_issuer(pools: list[dict], chain: str, symbols: list[str],
                 token_address: str) -> dict | None:
     """Protocol that issues a yield-bearing token.

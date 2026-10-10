@@ -35,6 +35,12 @@ JUDGEMENT = {
     "lending": {"incident": "liquidity_crunch", "annual_p": 0.05, "severity": 0.10,
                 "rationale": "JUDGEMENT: liquidation cascade / bad debt in this market; the "
                              "edge exposure already carries the measured liquidation pressure."},
+    "liquidation_exit": {"incident": "liquidity_crunch", "annual_p": 0.10, "severity": 0.10,
+                         "rationale": "JUDGEMENT: DEX liquidity for the collateral dries up, "
+                                      "liquidators stop and the lent-out share turns into bad "
+                                      "debt (rate as a Pendle pool crunch, severity as a lending "
+                                      "cascade); the edge exposure already scales it by the "
+                                      "measured price impact vs the liquidation bonus."},
     "asset_non_usd": {"incident": "depeg", "annual_p": 0.03, "severity": 0.05,
                       "rationale": "JUDGEMENT: liquid staking tokens vs their base asset; stETH "
                                    "traded about 5% below ETH in June 2022."},
@@ -111,6 +117,8 @@ def params_for(node: Node) -> list[dict]:
         return []
     if meta.get("part_of"):  # e.g. the aggregator behind an oracle proxy: counted on the proxy
         return []
+    if t == "market" and meta.get("role") == "liquidation_exit":
+        return [JUDGEMENT["liquidation_exit"]]
     if t in JUDGEMENT:
         return [JUDGEMENT[t]]
     if CAL is None:

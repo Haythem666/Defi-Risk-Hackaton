@@ -9,6 +9,7 @@ risk is getting stuck: a lender can only withdraw the pool's idle liquidity.
 """
 
 from src.data import aave, morpho
+from src.graph.collateral import add_collateral_depth, add_liquidation_exit
 from src.graph.common import (MIN_COLLATERAL_USD, add_asset, add_chain, add_node, add_oracle,
                               add_protocol, chain_name, explorer, morpho_oracle_usd)
 from src.schemas import DependencyGraph, Edge, Node, Position
@@ -40,11 +41,14 @@ def _add_morpho_market(nodes: list[Node], edges: list[Edge], cid: int, m: dict,
                         {"price_usd": (coll.get("price") or {}).get("usd")})
     edges.append(Edge(lend_id, coll_id, "secured_by", round(util, 3),
                       f"Borrowers post {coll['symbol']}; {util:.0%} of supply is lent out: {url}"))
+    add_collateral_depth(nodes, edges, cid, coll_id, coll["symbol"], coll["address"])
     oracle = (m.get("oracle") or {}).get("address")
+    oracle_usd = morpho_oracle_usd(cid, m) if oracle else None
     if oracle:
-        add_oracle(nodes, edges, cid, lend_id, oracle, morpho_oracle_usd(cid, m),
+        add_oracle(nodes, edges, cid, lend_id, oracle, oracle_usd,
                    (coll.get("price") or {}).get("usd"), "Morpho oracle price() read on-chain",
                    exposure=util)
+    add_liquidation_exit(nodes, edges, cid, lend_id, m, util, oracle_usd)
     return lend_id
 
 
@@ -284,6 +288,7 @@ def build_aave_supply(pos: Position) -> DependencyGraph:
                             {"price_usd": float(r["usdExchangeRate"] or 0) or None})
         edges.append(Edge(lend_id, coll_id, "secured_by", round(util * share, 3),
                           f"{ct['symbol']} is {share:.0%} of the pool's collateral: {pool_link}"))
+        add_collateral_depth(nodes, edges, cid, coll_id, ct["symbol"], ct["address"])
         if r.get("usdOracleAddress"):
             add_oracle(nodes, edges, cid, lend_id, r["usdOracleAddress"],
                        float(r["usdExchangeRate"] or 0) or None, None,
