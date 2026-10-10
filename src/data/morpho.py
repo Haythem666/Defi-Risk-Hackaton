@@ -1,40 +1,26 @@
-"""Morpho Blue GraphQL API (public, no key). Docs: https://docs.morpho.org/tools/offchain/api/"""
+"""Morpho GraphQL API (public, no key). Docs: https://docs.morpho.org/tools/offchain/api/
+
+Every function sends ONE GraphQL query: a text that lists exactly the fields
+we want back. The API answers with those fields, as JSON. All calls go
+through cache.fetch_json (saved in data/cache/, logged).
+"""
 
 from src.data.cache import fetch_json
 
 URL = "https://blue-api.morpho.org/graphql"
 
-# Chains with listed Morpho markets, and their name in app.morpho.org URLs.
+# Chains where Morpho runs, and their name in app.morpho.org URLs.
 NETWORKS = {1: "ethereum", 42161: "arbitrum", 8453: "base", 999: "hyperevm"}
-
-_MARKETS_BY_COLLATERAL = """
-query($assets: [String!], $chains: [Int!]) {
-  markets(first: 50, where: {collateralAssetAddress_in: $assets, chainId_in: $chains}) {
-    items {
-      marketId
-      lltv
-      collateralAsset { symbol address decimals price { usd } }
-      loanAsset { symbol address decimals price { usd } }
-      oracle { address type }
-      state { collateralAssetsUsd borrowAssetsUsd supplyAssetsUsd }
-    }
-  }
-}
-"""
+CHAINS = {1: "Ethereum", 42161: "Arbitrum", 8453: "Base", 999: "HyperEVM"}
 
 
-def markets_with_collateral(chain_id: int, asset_address: str) -> list[dict]:
-    """Morpho markets that accept `asset_address` as collateral."""
-    if chain_id not in NETWORKS:
-        return []
-    body = {"query": _MARKETS_BY_COLLATERAL,
-            "variables": {"assets": [asset_address.lower()], "chains": [chain_id]}}
-    return ((fetch_json(URL, body=body).get("data") or {}).get("markets") or {}).get("items") or []
+def _ask(query: str, variables: dict, field: str):
+    """Send a query, return data[field] (None if the API found nothing)."""
+    data = fetch_json(URL, body={"query": query, "variables": variables})
+    return (data.get("data") or {}).get(field)
 
 
-def market_url(chain_id: int, market_id: str) -> str:
-    return f"https://app.morpho.org/{NETWORKS.get(chain_id, chain_id)}/market/{market_id}"
-
+# --- One lending market --------------------------------------------------------
 
 _MARKET_FIELDS = """
   marketId
@@ -48,29 +34,27 @@ _MARKET_FIELDS = """
 """
 
 
-def market(chain_id: int, market_id: str) -> dict:
-    """One Morpho market by its id."""
+def market(chain_id: int, market_id: str) -> dict | None:
+    """One Morpho market: what is lent, against which collateral, priced by
+    which oracle, and how much of it is borrowed (utilization)."""
     q = f"query($id: String!, $chain: Int!) {{ marketById(marketId: $id, chainId: $chain) {{ {_MARKET_FIELDS} }} }}"
-    return fetch_json(URL, body={"query": q, "variables": {"id": market_id, "chain": chain_id}}
-                      )["data"]["marketById"]
+    return _ask(q, {"id": market_id, "chain": chain_id}, "marketById")
 
 
 def listed_markets(chain_id: int, first: int = 30) -> list[dict]:
-    """Largest Morpho markets listed in the Morpho app, by supply.
-
-    Unlisted markets include broken ones (billions supplied against a few
-    dollars of collateral), so we only offer listed ones. Idle markets (no
-    collateral asset, nothing can be borrowed) are skipped too.
-    """
+    """Largest markets shown in the Morpho app (for the app's menu)."""
     q = f"""query($chains: [Int!], $first: Int) {{
       markets(first: $first, orderBy: SupplyAssetsUsd, orderDirection: Desc,
               where: {{chainId_in: $chains, listed: true}}) {{ items {{ {_MARKET_FIELDS} }} }} }}"""
-    if chain_id not in NETWORKS:
-        return []
-    items = fetch_json(URL, body={"query": q, "variables": {"chains": [chain_id], "first": first}}
-                       )["data"]["markets"]["items"]
-    return [m for m in items if m.get("collateralAsset")]
+    items = (_ask(q, {"chains": [chain_id], "first": first}, "markets") or {}).get("items") or []
+    return [m for m in items if m.get("collateralAsset")]  # skip idle markets (nothing to borrow)
 
+
+def market_url(chain_id: int, market_id: str) -> str:
+    return f"https://app.morpho.org/{NETWORKS.get(chain_id, chain_id)}/market/{market_id}"
+
+
+# --- Vaults v1 ("MetaMorpho") ------------------------------------------------
 
 _VAULT_FIELDS = """
   address
@@ -85,27 +69,24 @@ _VAULT_FIELDS = """
 
 
 def vault(chain_id: int, address: str) -> dict | None:
-    """One Morpho vault (v1, "MetaMorpho"): curator, fee, timelock, liquidity
-    and allocation. None if the address is not a v1 vault (e.g. a Vault V2)."""
+    """A v1 vault: curator, fee, timelock, liquidity and how much it has in
+    each market (allocation). None if the address is not a v1 vault."""
     q = f"query($a: String!, $chain: Int!) {{ vaultByAddress(address: $a, chainId: $chain) {{ {_VAULT_FIELDS} }} }}"
-    data = fetch_json(URL, body={"query": q, "variables": {"a": address, "chain": chain_id}})
-    return (data.get("data") or {}).get("vaultByAddress")
+    return _ask(q, {"a": address, "chain": chain_id}, "vaultByAddress")
 
 
 def listed_vaults(chain_id: int, first: int = 30) -> list[dict]:
-    """Largest vaults listed in the Morpho app, by deposits."""
-    if chain_id not in NETWORKS:
-        return []
     q = """query($chains: [Int!], $first: Int) {
       vaults(first: $first, orderBy: TotalAssetsUsd, orderDirection: Desc,
              where: {chainId_in: $chains, listed: true}) {
         items { address name asset { symbol } state { totalAssetsUsd } } } }"""
-    return fetch_json(URL, body={"query": q, "variables": {"chains": [chain_id], "first": first}}
-                      )["data"]["vaults"]["items"]
+    return (_ask(q, {"chains": [chain_id], "first": first}, "vaults") or {}).get("items") or []
 
 
-# Vault V2: the curator plugs "adapters" (where money can go) and sets caps;
-# each setting has its own timelock. Selectors of the ones that matter.
+# --- Vaults V2 ---------------------------------------------------------------
+
+# A V2 vault reaches markets through "adapters", and each of the curator's
+# powers has its own timelock, identified by a function selector.
 V2_TIMELOCKS = {
     "0x60d54d41": "addAdapter", "0x585cd34b": "removeAdapter",
     "0xf6f98fd5": "increaseAbsoluteCap", "0x2438525b": "increaseRelativeCap",
@@ -135,45 +116,19 @@ _VAULT_V2_FIELDS = """
 
 
 def vault_v2(chain_id: int, address: str) -> dict | None:
-    """One Morpho Vault V2: its adapters (Morpho markets, v1 vaults, other V2
-    vaults) with the USD each holds, curator, owner and per-setting timelocks."""
+    """A V2 vault: its adapters (Morpho markets, v1 vaults, other V2 vaults)
+    with the USD each holds, curator, owner and per-setting timelocks."""
     q = f"query($a: String!, $chain: Int!) {{ vaultV2ByAddress(address: $a, chainId: $chain) {{ {_VAULT_V2_FIELDS} }} }}"
-    data = fetch_json(URL, body={"query": q, "variables": {"a": address, "chain": chain_id}})
-    return (data.get("data") or {}).get("vaultV2ByAddress")
+    return _ask(q, {"a": address, "chain": chain_id}, "vaultV2ByAddress")
 
 
 def listed_vaults_v2(chain_id: int, first: int = 30) -> list[dict]:
-    """Largest Vault V2s listed in the Morpho app, by deposits."""
-    if chain_id not in NETWORKS:
-        return []
     q = """query($chains: [Int!], $first: Int) {
       vaultV2s(first: $first, orderBy: TotalAssetsUsd, orderDirection: Desc,
                where: {chainId_in: $chains, listed: true}) {
         items { address name asset { symbol } totalAssetsUsd } } }"""
-    data = fetch_json(URL, body={"query": q, "variables": {"chains": [chain_id], "first": first}})
-    return ((data.get("data") or {}).get("vaultV2s") or {}).get("items") or []
+    return (_ask(q, {"chains": [chain_id], "first": first}, "vaultV2s") or {}).get("items") or []
 
 
 def vault_url(chain_id: int, address: str) -> str:
     return f"https://app.morpho.org/{NETWORKS.get(chain_id, chain_id)}/vault/{address}"
-
-
-def collateral_at_risk(chain_id: int, market_id: str, points: int = 20) -> list[tuple[float, float]]:
-    """[(price ratio, USD of collateral liquidatable at that price), ...].
-    A ratio of 0.95 means the collateral price falls 5% from now."""
-    if chain_id not in NETWORKS:
-        return []
-    q = """query($id: String!, $chain: Int!, $n: Int) {
-      marketCollateralAtRisk(uniqueKey: $id, chainId: $chain, numberOfPoints: $n) {
-        collateralAtRisk { collateralPriceRatio collateralUsd } } }"""
-    data = fetch_json(URL, body={"query": q, "variables": {"id": market_id, "chain": chain_id,
-                                                           "n": points}})
-    rows = (((data.get("data") or {}).get("marketCollateralAtRisk") or {})
-            .get("collateralAtRisk") or [])
-    return [(r["collateralPriceRatio"], r["collateralUsd"] or 0.0) for r in rows]
-
-
-def liquidated_at(curve: list[tuple[float, float]], price_ratio: float) -> float:
-    """USD liquidated if the collateral price falls to `price_ratio` (0..1)."""
-    eligible = [usd for ratio, usd in curve if ratio >= price_ratio - 1e-9]
-    return max(eligible, default=0.0)
