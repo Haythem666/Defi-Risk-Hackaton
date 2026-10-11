@@ -42,17 +42,6 @@ st.title("DeFi Risk Dependency: stay or exit?")
 
 # --- Inputs ---------------------------------------------------------------
 with st.sidebar:
-    view = st.radio("View", ["One pocket", "Whole book"], horizontal=True,
-                    help="Whole book: several pockets at once, and what they share.")
-if view == "Whole book":
-    from app.book_view import render
-    with st.sidebar:
-        st.header("Book")
-        book_horizon = st.slider("Decision horizon (days)", 1, 365, 30, key="book_horizon")
-    render(book_horizon)
-    st.stop()
-
-with st.sidebar:
     st.header("Position")
     kinds = {"Pendle PT": "pendle_pt", "Lend on Morpho": "morpho_supply",
              "Supply to Aave": "aave_supply", "Morpho vault": "morpho_vault",

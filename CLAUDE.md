@@ -55,13 +55,10 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
   matrix with spiral gains on the diagonal). Scenario losses come from this engine.
 - `src/decision/`: `exit_cost.py` (live Pendle router quote; pool liquidity for loans; `late_exit`: leaving
   after an incident, with the crowd) + `rule.py` (STAY/EXIT -> Verdict; `with_late_exit`)
-  + `book.py` (whole book: one evaluation per pocket, dependencies shared across pockets by node id,
-  book stress, a book Monte Carlo where a shared incident is drawn once for every pocket)
   + `snell.py` (optimal-stopping exit trigger for lending positions: exit when utilization > u* =
   1 - (KAPPA (H - C) / r)^(1/GAMMA), H = stress-engine haircut if trapped; KAPPA/GAMMA JUDGEMENT,
   anchored on a 0.2/yr freeze hazard at the 90% target utilization).
-- `app/`: Streamlit app (`streamlit run app/main.py`); "Whole book" view in `app/book_view.py`
-  (pocket cards, shared-dependency heatmap and network, book stress test, action plan).
+- `app/`: Streamlit app (`streamlit run app/main.py`), one pocket at a time.
 - `data/examples/`: hand-made example graphs and past incidents.
 - `tests/`: pytest.
 
@@ -111,7 +108,7 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
   exposure = venue share of backing. Protocol/issuer nodes carry DeFiLlama category, audits and
   past hacks (input for calibrating the risk model).
 - Known gaps: Kamino oracles and Solana program authorities not read; Euler not covered (no keyless API), venues only for Ethena, Aave PT exposure still crude (share of PT TVL), late exit ignores LPs
-  pulling Pendle liquidity in a crisis, the book Monte Carlo treats different nodes as independent.
+  pulling Pendle liquidity in a crisis, no portfolio view (one pocket at a time).
 
 ## Commands
 - Install: `pip install -r requirements.txt`
