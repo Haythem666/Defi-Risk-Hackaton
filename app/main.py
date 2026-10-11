@@ -289,6 +289,17 @@ if late:
             st.metric("Cost", f"{late['cost']:.2%}")
         st.caption(late["source"] + (" Added to every incident that costs more than this "
                                      "(the expected loss above includes it)." if late["cost"] else ""))
+    st.caption("These two boxes are prices of leaving, not risks: they move with the pocket size, "
+               "the horizon (yield given up), the forced sellers and the days to maturity, not with "
+               "the What-if. The What-if moves the risk side: the expected loss and the verdict above.")
+    if late["cost"] and lost >= late["cost"]:
+        total = lost + (1 - lost) * late["cost"]
+        st.info(f"Your What-if, if you stay: {what} loses {hit}%, the pocket loses {lost:.1%}, then "
+                f"leaving late costs {late['cost']:.2%} of the {1 - lost:.1%} left = "
+                f"{(1 - lost) * late['cost']:.2%} more. Total {total:.1%} "
+                f"({total * size:,.0f} USD) vs {exit_cost + forgone:.2%} to leave now."
+                + (f" At a {chance}% chance, it adds {chance / 100 * total:.2%} to the expected loss."
+                   if chance else ""))
 if rule:
     st.markdown("**Exit trigger** (optimal stopping: exit before utilization freezes withdrawals)")
     d = st.columns(4)
