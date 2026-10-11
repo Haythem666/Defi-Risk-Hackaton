@@ -9,8 +9,8 @@ import pandas as pd
 import streamlit as st
 
 from src.data import aave, cache, hyperliquid, kamino, morpho, pendle
-from src.decision.exit_cost import exit_cost as position_exit_cost
-from src.decision.rule import decide
+from src.decision.exit_cost import exit_cost as position_exit_cost, late_exit
+from src.decision.rule import decide, with_late_exit
 from src.graph.build import build_graph
 from src.graph.common import CHAINS, EVM_CHAINS
 from src.decision.snell import exit_rule, position_yield
@@ -41,6 +41,17 @@ st.set_page_config(page_title="DeFi Risk Dependency", layout="wide")
 st.title("DeFi Risk Dependency: stay or exit?")
 
 # --- Inputs ---------------------------------------------------------------
+with st.sidebar:
+    view = st.radio("View", ["One pocket", "Whole book"], horizontal=True,
+                    help="Whole book: several pockets at once, and what they share.")
+if view == "Whole book":
+    from app.book_view import render
+    with st.sidebar:
+        st.header("Book")
+        book_horizon = st.slider("Decision horizon (days)", 1, 365, 30, key="book_horizon")
+    render(book_horizon)
+    st.stop()
+
 with st.sidebar:
     st.header("Position")
     kinds = {"Pendle PT": "pendle_pt", "Lend on Morpho": "morpho_supply",
@@ -213,7 +224,8 @@ if chance:
                   f"stress engine: the position loses {lost:.1%}.")]
     st.info(f"Added to the decision: {chance}% chance that {what} loses {hit}% "
             f"(your position would lose {lost:.1%}). See the verdict below.")
-risk = simulate(scenarios)
+late = late_exit(pos, graph)
+risk = simulate(with_late_exit(scenarios, late["cost"] if late else 0.0))
 st.markdown("**Every dependency at once**: the same question for each of them, at 5%, 20%, 50% and 100%.")
 table = stress.stress_table(graph)
 st.dataframe(pd.DataFrame([{
@@ -257,8 +269,26 @@ c[4].metric("Breakeven p*", "-" if verdict.breakeven_probability is None
             else f"{verdict.breakeven_probability:.1%}",
             help="If the worst scenario's probability is above this, exiting is cheaper.")
 (st.error if verdict.decision == "EXIT" else st.success)(verdict.reason)
-if "stuck" in cost_source:
-    st.warning(cost_source)
+if late:
+    st.markdown("**When you leave matters.** The decision is taken *now*, before any incident: "
+                "leaving now costs today's quote. Staying means that if an incident hits, you "
+                "leave *late*, at the same time as everyone else.")
+    t = st.columns(2)
+    with t[0].container(border=True):
+        st.markdown("🟢 **Leave now** (before any incident)")
+        st.metric("Cost", f"{exit_cost + forgone:.2%}")
+        st.caption(f"Exit {exit_cost:.2%} + yield given up {forgone:.2%}. {cost_source}")
+        if "withdrawable_now" in late:
+            st.metric("You get out now", f"{late['withdrawable_now']:.0%} of the pocket")
+            st.caption(f"{late['withdrawable_now'] * size:,.0f} USD")
+    with t[1].container(border=True):
+        st.markdown("🔴 **Leave late** (after an incident, with the crowd)")
+        if "withdrawable_in_run" in late:
+            st.metric("You get out in a run", f"{late['withdrawable_in_run']:.0%} of the pocket")
+        else:
+            st.metric("Cost", f"{late['cost']:.2%}")
+        st.caption(late["source"] + (" Added to every incident that costs more than this "
+                                     "(the expected loss above includes it)." if late["cost"] else ""))
 if rule:
     st.markdown("**Exit trigger** (optimal stopping: exit before utilization freezes withdrawals)")
     d = st.columns(4)
