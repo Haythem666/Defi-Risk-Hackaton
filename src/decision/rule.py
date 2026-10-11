@@ -1,8 +1,9 @@
 """Exit cost and the STAY / EXIT decision."""
 
+from dataclasses import replace
 from typing import Optional
 
-from src.schemas import RiskResult, Verdict
+from src.schemas import RiskResult, Scenario, Verdict
 
 
 def amm_exit_cost(size_usd: float, liquidity_usd: float, fee_rate: float = 0.0) -> float:
@@ -23,6 +24,18 @@ def breakeven_probability(exit_cost: float, loss_if_hit: float) -> Optional[floa
     if loss_if_hit <= 0:
         return None
     return min(1.0, exit_cost / loss_if_hit)
+
+
+def with_late_exit(scenarios: list[Scenario], late_cost: float) -> list[Scenario]:
+    """Staying means leaving late if the incident hits: the pocket loses its
+    loss if hit, then unwinds what is left with the crowd at `late_cost`
+    (exit_cost.late_exit). Leaving now pays today's calm cost instead. A hit
+    smaller than the unwinding cost is absorbed, not unwound."""
+    if late_cost <= 0:
+        return scenarios
+    return [replace(s, loss_if_hit=s.loss_if_hit + (1 - s.loss_if_hit) * late_cost,
+                    rationale=f"{s.rationale} Then unwinds with the crowd: +{late_cost:.2%} of what is left.")
+            if s.loss_if_hit >= late_cost else s for s in scenarios]
 
 
 def decide(risk: RiskResult, exit_cost: float, forgone_yield: float = 0.0,

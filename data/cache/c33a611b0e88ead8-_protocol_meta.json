@@ -1,0 +1,1 @@
+{"fetched_at": 1791674872.775841, "url": "https://api.llama.fi/protocol/blazestake", "params": null, "body": null, "data": {"name": "BlazeStake", "category": "Liquid Staking", "audits": "2", "audit_links": ["https://stake-docs.solblaze.org/protocol/audits"], "parentProtocol": null, "hacks": [], "chains": ["Solana"]}}

@@ -13,6 +13,11 @@ working demo on REAL data 15%. It must run on real data, not just be slides.
 Exit if `P(incident) * loss_if_hit > exit_cost + yield given up over the horizon` (the yield
 you stop earning by holding cash instead), or when a lending position crosses its exit trigger u*.
 Also report the breakeven probability `p* = exit_cost / loss_if_hit`.
+The decision is taken now, before any incident: exit_cost is today's quote. Staying means leaving
+late if an incident hits, with the crowd: each hit costing more than that late-exit cost is
+increased by it (a PT sold with the PT lenders liquidate, capped where holding to maturity earns
+30%/yr; a loan queues for idle liquidity, so no price cost, but only liquidity / deposits gets out
+in a run).
 Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 11% slippage.
 
 ## Stack
@@ -48,11 +53,15 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
   only beyond the LLTV buffer, recovering the collateral at its DEX exit price; liquidation-spiral
   loop gain g per collateral, stalled when liquidations do not pay; spectral radius of the exposure
   matrix with spiral gains on the diagonal). Scenario losses come from this engine.
-- `src/decision/`: `exit_cost.py` (live Pendle router quote; pool liquidity for loans) + `rule.py` (STAY/EXIT -> Verdict)
+- `src/decision/`: `exit_cost.py` (live Pendle router quote; pool liquidity for loans; `late_exit`: leaving
+  after an incident, with the crowd) + `rule.py` (STAY/EXIT -> Verdict; `with_late_exit`)
+  + `book.py` (whole book: one evaluation per pocket, dependencies shared across pockets by node id,
+  book stress, a book Monte Carlo where a shared incident is drawn once for every pocket)
   + `snell.py` (optimal-stopping exit trigger for lending positions: exit when utilization > u* =
   1 - (KAPPA (H - C) / r)^(1/GAMMA), H = stress-engine haircut if trapped; KAPPA/GAMMA JUDGEMENT,
   anchored on a 0.2/yr freeze hazard at the 90% target utilization).
-- `app/`: Streamlit app (`streamlit run app/main.py`).
+- `app/`: Streamlit app (`streamlit run app/main.py`); "Whole book" view in `app/book_view.py`
+  (pocket cards, shared-dependency heatmap and network, book stress test, action plan).
 - `data/examples/`: hand-made example graphs and past incidents.
 - `tests/`: pytest.
 
@@ -101,7 +110,8 @@ Reference case from the brief: 10 pockets of 10%, one affected, unwinding costs 
 - Issuer depth: Ethena -> exchange venues (Binance, OKX, ...) from Ethena's transparency API,
   exposure = venue share of backing. Protocol/issuer nodes carry DeFiLlama category, audits and
   past hacks (input for calibrating the risk model).
-- Known gaps: Kamino oracles and Solana program authorities not read; Euler not covered (no keyless API), venues only for Ethena, Aave PT exposure still crude (share of PT TVL), exit cost ignores crisis liquidity (forgone yield is now counted), no portfolio view yet.
+- Known gaps: Kamino oracles and Solana program authorities not read; Euler not covered (no keyless API), venues only for Ethena, Aave PT exposure still crude (share of PT TVL), late exit ignores LPs
+  pulling Pendle liquidity in a crisis, the book Monte Carlo treats different nodes as independent.
 
 ## Commands
 - Install: `pip install -r requirements.txt`

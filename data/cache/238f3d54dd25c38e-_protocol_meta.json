@@ -1,0 +1,1 @@
+{"fetched_at": 1791674868.822319, "url": "https://api.llama.fi/protocol/jupiter-staked-sol", "params": null, "body": null, "data": {"name": "Jupiter Staked SOL", "category": "Liquid Staking", "audits": "0", "audit_links": null, "parentProtocol": "parent#jupiter", "hacks": [], "chains": ["Solana"]}}
